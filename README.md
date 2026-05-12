@@ -56,11 +56,27 @@ python3 -m pip install -r requirements.txt
 
 ## ビルド
 
-```bash
-git clone --recursive https://github.com/t-nakabayashi/tc2026.git ~/colcon_ws
-# 既存 clone の場合
-# git submodule update --init --recursive
+本リポジトリ自体を colcon ワークスペースとして利用します（直下に `src/` が
+含まれているため、別途 `src/` を作成する必要はありません）。
 
+### 1. ソースの取得
+
+```bash
+# 新規取得 (submodule もまとめて clone)
+git clone --recursive https://github.com/t-nakabayashi/tc2026.git ~/colcon_ws
+```
+
+`--recursive` を付け忘れた／既に clone 済みの場合は、リポジトリ内で
+submodule のみ取得し直してください。
+
+```bash
+cd ~/colcon_ws
+git submodule update --init --recursive
+```
+
+### 2. 依存関係の導入とビルド
+
+```bash
 cd ~/colcon_ws
 source /opt/ros/jazzy/setup.bash
 python3 -m pip install -r requirements.txt
