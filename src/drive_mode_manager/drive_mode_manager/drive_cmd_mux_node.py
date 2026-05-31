@@ -50,7 +50,7 @@ class DriveCmdMuxNode(Node):
         self.declare_parameter('joy_timeout_s', 0.5)
         self.declare_parameter('publish_rate_hz', 20.0)
         self.declare_parameter('l1_button_index', 4)
-        self.declare_parameter('ps_button_index', 16)
+        self.declare_parameter('ps_button_index', 5)
         trigger = str(self.get_parameter('manual_transition_trigger').value)
         if trigger != 'l1_ps_button_hold':
             self.get_logger().warn(

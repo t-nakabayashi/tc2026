@@ -25,8 +25,8 @@ class DriveModeConfig:
     autonomous_cmd_timeout_s: float = 0.5
     manual_cmd_timeout_s: float = 0.3
     joy_timeout_s: float = 0.5
-    l1_button_index: int = 4
-    ps_button_index: int = 16
+    l1_button_index: int = 4  # L1 (buttons[4]) デッドマン
+    ps_button_index: int = 5  # モード遷移トリガ。実機 PS3 は PS 不可のため R1 (buttons[5])
 
 
 @dataclass(frozen=True)

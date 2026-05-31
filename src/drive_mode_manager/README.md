@@ -8,7 +8,7 @@
 
 - `/joy` から手動走行用の `/cmd_vel/manual` を生成する。
 - `/cmd_vel/autonomous` と `/cmd_vel/manual` を走行モードに応じて mux し、最終 `/cmd_vel` を publish する。
-- L1 / PS button の操作で自律走行と手動走行を切り替える。
+- L1 / R1 button の操作で自律走行と手動走行を切り替える。
 - `/drive_mode_status` で走行モード、入力状態、出力元、復帰待ち状態を publish する。
 - `drive_status_gui_node` で走行モード、cmd、RTK、waypoint 状態を専用 GUI 表示する。
 - 開発用に `ps3_joy_sim_node` でキーボード入力から `/joy` を publish する。
@@ -83,7 +83,7 @@ ros2 launch ypspur_ros2 ypspur_ros2.launch.py \
 ros2 launch drive_mode_manager drive_mode_manager.launch.py
 ```
 
-起動直後の既定モードは `autonomous` です。手動走行へ切り替えるには、Joy 入力で L1 と PS button
+起動直後の既定モードは `autonomous` です。手動走行へ切り替えるには、Joy 入力で L1 と R1 button
 を `manual_transition_hold_s` 秒以上同時押しします。手動走行中は L1 を押している間だけ
 `/cmd_vel/manual` が有効になります。自律走行へ戻す場合は L1 を離し、
 `manual_to_auto_l1_released_s` 経過後に `/cmd_vel/autonomous` が有効なら復帰待ち状態へ移ります。
@@ -109,8 +109,8 @@ ros2 launch drive_mode_manager ps3_joy_sim.launch.py
 | --- | --- |
 | `w` / `s` | 左 stick 前後 |
 | `a` / `d` | 左 stick 左右 |
-| `l` | L1 button |
-| `p` | PS button |
+| `l` | L1 button (buttons[4], デッドマン) |
+| `p` | R1 button (buttons[5], モード遷移トリガ) |
 | `space` | 入力 reset |
 
 `w`/`s`/`a`/`d` は押すたびに左 stick の保持値へ `0.1` ずつ加算または減算されます。GUI には現在の stick 値に対して `manual_teleop_node` の既定 scale と deadzone を適用した予測 `cmd_vel` の `v` と `w` を表示します。`space` は stick を neutral に戻します。
@@ -148,6 +148,29 @@ ros2 launch drive_mode_manager ps3_joy_sim.launch.py
 | `drive_cmd_mux_node` | `initial_mode`, `manual_transition_trigger`, `manual_transition_hold_s`, `manual_to_auto_l1_released_s`, `auto_resume_delay_s`, `autonomous_cmd_timeout_s`, `manual_cmd_timeout_s`, `l1_button_index`, `ps_button_index` |
 | `drive_status_gui_node` | `main_display_ratio`, `direction_linear_scale`, `direction_angular_scale`, `direction_deadzone`, `direction_linear_axis_invert`, `direction_angular_axis_invert`, `turn_preview_seconds` |
 | `ps3_joy_sim_node` | `joy_topic`, `publish_rate_hz`, `num_axes`, `num_buttons`, `invert_left_stick_x`, key bind 関連パラメータ |
+
+## 実機 Joy ボタン対応
+
+実機入力源は `joy` package の `joy_node`（ROS 2 Jazzy / SDL2 ベース）に統一します。
+開発時はキーボード模擬の `ps3_joy_sim_node` を `joy_input:=ps3_joy_sim` で代替起動でき、
+index 体系は両者で共通です。
+
+2026-05-31 に実機 `Sony PLAYSTATION(R)3 Controller` を `joy_node` で実測し、以下を確定しました
+（`num_axes=6`, `num_buttons=17`）。
+
+| 物理操作 | Joy index | 用途・パラメータ |
+| --- | --- | --- |
+| 左スティック 前後 | `axes[1]`（前=+） | `linear_axis` |
+| 左スティック 左右 | `axes[0]`（左=+） | `angular_axis` |
+| L1 | `buttons[4]` | `enable_button` / `l1_button_index`（デッドマン） |
+| R1 | `buttons[5]` | `ps_button_index`（モード遷移トリガ） |
+| L2 | `buttons[6]` | `turbo_button`（ターボ） |
+| R2 | `buttons[7]` | 未使用 |
+
+実機の PS ボタンは `joy_node` で安定取得できないため、モード遷移トリガには R1 を割り当てます。
+パラメータ名 `ps_button_index` と `tc_route_msgs/DriveModeStatus` の `ps_button_pressed`
+フィールドは、他パッケージも参照する既存 interface のため名称を維持し、参照する物理ボタンのみ
+R1（`buttons[5]`）へ変更しています。実測には `tools/joy_mapping_record.py` を利用します。
 
 ## 依存関係
 

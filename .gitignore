@@ -21,3 +21,4 @@ __pycache__/
 
 # Claude Code ローカル設定
 .claude/
+/CLAUDE.md

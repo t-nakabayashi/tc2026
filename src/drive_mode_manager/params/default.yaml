@@ -1,7 +1,7 @@
 manual_teleop_node:
   ros__parameters:
-    linear_axis: 1
-    angular_axis: 0
+    linear_axis: 1  # 左スティック前後 axes[1]（前=+）
+    angular_axis: 0  # 左スティック左右 axes[0]（左=+）
     linear_y_axis: -1
     linear_scale: 1.2
     angular_scale: 1.5
@@ -9,8 +9,8 @@ manual_teleop_node:
     deadzone: 0.05
     linear_axis_invert: false
     angular_axis_invert: false
-    enable_button: 4
-    turbo_button: 5
+    enable_button: 4  # L1 (buttons[4]) デッドマン
+    turbo_button: 6  # L2 (buttons[6]) ターボ
     turbo_ratio: 1.5
     joy_timeout_s: 0.5
     publish_rate_hz: 20.0
@@ -26,8 +26,8 @@ drive_cmd_mux_node:
     manual_cmd_timeout_s: 0.3
     joy_timeout_s: 0.5
     publish_rate_hz: 20.0
-    l1_button_index: 4
-    ps_button_index: 16
+    l1_button_index: 4  # L1 (buttons[4]) デッドマン
+    ps_button_index: 5  # モード遷移トリガ。実機 PS3 は PS 不可のため R1 (buttons[5]) を使用
 
 drive_status_gui_node:
   ros__parameters:
@@ -54,7 +54,7 @@ ps3_joy_sim_node:
     invert_left_stick_y: false
     stick_step: 0.1
     l1_button_index: 4
-    ps_button_index: 16
+    ps_button_index: 5  # 実機モード遷移トリガ R1 (buttons[5]) に合わせる
     key_l1: l
     key_ps: p
     key_stick_forward: w

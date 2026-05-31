@@ -140,7 +140,7 @@ def test_l1_ps_right_combination_is_represented_in_core() -> None:
     state = core.compute({'l', 'p'}, stick_x, stick_y)
 
     assert state.buttons[4] == 1
-    assert state.buttons[16] == 1
+    assert state.buttons[5] == 1
     assert math.isclose(state.axes[0], -0.1)
     assert math.isclose(state.left_stick_x, 0.1)
 

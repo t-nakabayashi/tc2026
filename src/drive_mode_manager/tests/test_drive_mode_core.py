@@ -18,7 +18,7 @@ def cmd(stamp: float, linear_x: float = 0.4, angular_z: float = 0.1) -> CommandS
 def joy(stamp: float, l1: bool = False, ps: bool = False) -> JoySnapshot:
     buttons = [0] * 17
     buttons[4] = 1 if l1 else 0
-    buttons[16] = 1 if ps else 0
+    buttons[5] = 1 if ps else 0  # 実機モード遷移トリガ R1 (buttons[5])
     return JoySnapshot(buttons=buttons, stamp_s=stamp)
 
 

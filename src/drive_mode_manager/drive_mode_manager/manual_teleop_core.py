@@ -20,8 +20,8 @@ class ManualTeleopConfig:
     deadzone: float = 0.05
     linear_axis_invert: bool = False
     angular_axis_invert: bool = False
-    enable_button: int = 4
-    turbo_button: int = 5
+    enable_button: int = 4  # L1 (buttons[4]) デッドマン
+    turbo_button: int = 6  # L2 (buttons[6]) ターボ
     turbo_ratio: float = 1.5
     joy_timeout_s: float = 0.5
 

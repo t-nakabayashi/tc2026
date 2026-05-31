@@ -36,7 +36,7 @@ class ManualTeleopNode(Node):
         self.declare_parameter('linear_axis_invert', False)
         self.declare_parameter('angular_axis_invert', False)
         self.declare_parameter('enable_button', 4)
-        self.declare_parameter('turbo_button', 5)
+        self.declare_parameter('turbo_button', 6)
         self.declare_parameter('turbo_ratio', 1.5)
         self.declare_parameter('joy_timeout_s', 0.5)
         self.declare_parameter('publish_rate_hz', 20.0)

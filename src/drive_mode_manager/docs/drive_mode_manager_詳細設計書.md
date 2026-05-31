@@ -71,7 +71,7 @@ ypspur_ros2
   <- /cmd_vel
 ```
 
-`drive_cmd_mux_node` は `/joy` も購読し、L1/PS ボタン状態、入力鮮度、長押し時間を
+`drive_cmd_mux_node` は `/joy` も購読し、L1/R1 ボタン状態、入力鮮度、長押し時間を
 状態遷移判定に使う。`manual_teleop_node` も `/joy` を購読するが、こちらは stick 軸から
 手動 Twist を生成するだけであり、最終出力の採否は `drive_cmd_mux_node` が決定する。
 
@@ -159,20 +159,22 @@ GUI は表示専用とし、状態遷移コマンドや速度指令を publish �
 | パラメータ | 型 | 既定値 | 内容 |
 | --- | --- | --- | --- |
 | `initial_mode` | string | `autonomous` | 起動直後の走行状態。`autonomous` または `manual` |
-| `manual_transition_trigger` | string | `l1_ps_button_hold` | 手動遷移トリガ種別 |
-| `manual_transition_hold_s` | double | `2.0` | L1 + PS 長押し判定時間 |
+| `manual_transition_trigger` | string | `l1_ps_button_hold` | 手動遷移トリガ種別。識別子は維持し物理ボタンは L1 + R1 |
+| `manual_transition_hold_s` | double | `2.0` | L1 + R1 長押し判定時間 |
 | `manual_to_auto_l1_released_s` | double | `1.0` | L1 入力なし継続判定時間 |
 | `auto_resume_delay_s` | double | `5.0` | 自律復帰後にゼロ出力する猶予時間 |
 | `autonomous_cmd_timeout_s` | double | `0.5` | 自律 cmd 有効期限 |
 | `manual_cmd_timeout_s` | double | `0.3` | 手動 cmd 有効期限 |
 | `joy_timeout_s` | double | `0.5` | `/joy` 入力有効期限 |
 | `publish_rate_hz` | double | `20.0` | `/cmd_vel` と status の publish 周期 |
-| `l1_button_index` | int | `4` | PS3 L1 ボタン index |
-| `ps_button_index` | int | `16` | PS ボタン index。実機確認後に調整する |
+| `l1_button_index` | int | `4` | PS3 L1 ボタン index (`buttons[4]`) |
+| `ps_button_index` | int | `5` | モード遷移トリガ index。実機 PS3 では R1 (`buttons[5]`) |
 
-`ps_button_index` は controller driver により変わる可能性がある。PS ボタンが `/joy` で安定して
-取得できない場合は、`manual_transition_trigger` を `l1_start_button_hold` などに変更できる
-構成にする。
+実機 PS3 を `joy_node` で実測した結果、PS ボタンは `/joy` で安定取得できないため、モード遷移
+トリガには R1 (`buttons[5]`) を割り当てる。パラメータ名 `ps_button_index` と
+`tc_route_msgs/DriveModeStatus` の `ps_button_pressed` フィールドは、他パッケージ
+（`robot_console`）も参照する既存 interface のため名称を維持し、参照する物理ボタンのみ R1 に
+変更している。
 
 ### 6.2 `manual_teleop_node`
 
@@ -187,8 +189,8 @@ GUI は表示専用とし、状態遷移コマンドや速度指令を publish �
 | `deadzone` | double | `0.05` | stick deadzone |
 | `linear_axis_invert` | bool | `false` | 縦軸反転 |
 | `angular_axis_invert` | bool | `false` | 横軸反転 |
-| `enable_button` | int | `4` | L1 デッドマンボタン |
-| `turbo_button` | int | `5` | R1 turbo ボタン |
+| `enable_button` | int | `4` | L1 デッドマンボタン (`buttons[4]`) |
+| `turbo_button` | int | `6` | L2 turbo ボタン (`buttons[6]`) |
 | `turbo_ratio` | double | `1.5` | turbo 倍率 |
 | `joy_timeout_s` | double | `0.5` | 入力 timeout |
 | `publish_rate_hz` | double | `20.0` | `/cmd_vel/manual` publish 周期 |
@@ -281,11 +283,11 @@ frame_id を持たない。将来 frame_id が必要になった場合は `Heade
 ```text
 joy_available
 and l1_pressed
-and ps_button_pressed
+and ps_button_pressed  # 物理ボタンは R1 (buttons[5])。フィールド名は interface 維持
 and hold_time >= manual_transition_hold_s
 ```
 
-L1 単独、PS 単独、stick 操作単独では遷移しない。遷移直後は `/cmd_vel` をゼロにし、
+L1 単独、R1 単独、stick 操作単独では遷移しない。遷移直後は `/cmd_vel` をゼロにし、
 次周期から L1 押下中かつ手動 cmd 有効時のみ `/cmd_vel/manual` を採用する。
 
 ### 8.2 `MANUAL -> AUTONOMOUS`
@@ -323,11 +325,11 @@ and autonomous_cmd_alive
 
 ### 9.1 `JoyState` 正規化
 
-`/joy` callback では、ボタン配列長を確認して L1/PS の押下状態を抽出する。index が範囲外の場合は
+`/joy` callback では、ボタン配列長を確認して L1/R1 の押下状態を抽出する。index が範囲外の場合は
 押下なしとして扱い、`reason` に `joy_button_index_out_of_range` を設定する。
 
 入力鮮度は `last_joy_time` と node clock の差で判定する。`joy_timeout_s` を超えた場合は
-`joy_available=false` とし、L1/PS は false 扱いにする。
+`joy_available=false` とし、L1/R1 は false 扱いにする。
 
 ### 9.2 `Twist` 有効性判定
 
@@ -379,8 +381,8 @@ lock 付きで更新する。GUI スレッドは `QTimer` により 100ms 周期
 
 | 事象 | 処理 | ログ |
 | --- | --- | --- |
-| `/joy` timeout | L1/PS 非押下扱い、出力ゼロ、MANUAL では自律復帰判定対象 | `warn` を throttle |
-| PS ボタン index 不正 | 手動遷移は成立させない | 起動時 `warn`、status reason |
+| `/joy` timeout | L1/R1 非押下扱い、出力ゼロ、MANUAL では自律復帰判定対象 | `warn` を throttle |
+| モード遷移ボタン (R1) index 不正 | 手動遷移は成立させない | 起動時 `warn`、status reason |
 | 自律 cmd timeout | `AUTONOMOUS` でも出力ゼロ | `warn` を throttle |
 | 手動 cmd timeout | `MANUAL` でも出力ゼロ | `warn` を throttle |
 | NaN/Inf Twist | 該当 cmd を無効扱い | `error` を throttle |
@@ -594,7 +596,7 @@ GUI 実装は、`PyQt5` の `Qt Widgets` と `QGraphicsView` / `QGraphicsScene` 
 - `pytest src/drive_mode_manager/tests` が成功する。
 - `colcon build --symlink-install --packages-select tc_route_msgs drive_mode_manager` が成功する。
 - `colcon build --packages-select tc_route_msgs drive_mode_manager` が成功する。
-- 実機 `/joy` で L1 と PS ボタン index を確認し、PS が不安定な場合は代替 trigger を決める。
+- 実機 `/joy` の L1 / モード遷移ボタン index 確認（2026-05-31 完了。L1=`buttons[4]`、PS は不安定のため R1=`buttons[5]` を採用）。
 - `DriveStatusGuiCore.fit_rect()` の単体テストで 16:9 表示領域の算出を確認する。
 - 画面を使う GUI 表示確認、controller 入力、実機駆動は自動テスト外の未確認事項として扱う。
 
@@ -617,8 +619,8 @@ timeout 停止、turbo 倍率である。自律 cmd passthrough と waypoint fla
 
 ## 17. 未決事項・今後の拡張
 
-- PS ボタンが `/joy` で安定して取得できるか。実機 controller で確認する。
-- PS ボタンが使えない場合の代替複合操作を決める。
+- PS ボタンの可否確認（2026-05-31 完了。実機 PS3 + `joy_node` で安定取得できないと判明）。
+- PS が使えない場合の代替操作の決定（2026-05-31 完了。モード遷移トリガを R1=`buttons[5]` とし、turbo は L2=`buttons[6]` へ移した）。
 - `manual_transition_hold_s=2.0`、`manual_to_auto_l1_released_s=1.0`、`auto_resume_delay_s=5.0` の
   実運用値を確認する。
 - 自律復帰予定速度が閾値を超えた場合、GUI 表示だけにするか、mux 側で復帰を保留するかを決める。
@@ -656,7 +658,7 @@ timeout 停止、turbo 倍率である。自律 cmd passthrough と waypoint fla
 
 ### 19.3 パラメータ
 
-既定値は現行 `manual_teleop_node` と `drive_cmd_mux_node` に合わせ、`left_stick_x_axis=0`、`left_stick_y_axis=1`、`l1_button_index=4`、`ps_button_index=16`、`stick_step=0.1` とする。GUI の点を円内に保つため `normalize_diagonal_stick=true` とする。キーボード左右入力から publish する Joy 横軸は tc2025 実機 Joy 互換のため `invert_left_stick_x=true` を既定とし、画面上の stick 点はキー入力方向のまま表示する。`cmd_vel_linear_scale=1.2`、`cmd_vel_angular_scale=1.5`、`cmd_vel_deadzone=0.05` により、publish する Joy 軸で `manual_teleop_node` が出す想定の `v` と `w` を GUI に表示する。`joy_topic` は相対 `joy`、`publish_rate_hz` は 20.0Hz とする。
+既定値は現行 `manual_teleop_node` と `drive_cmd_mux_node` に合わせ、`left_stick_x_axis=0`、`left_stick_y_axis=1`、`l1_button_index=4`、`ps_button_index=5`（実機モード遷移トリガ R1）、`stick_step=0.1` とする。GUI の点を円内に保つため `normalize_diagonal_stick=true` とする。キーボード左右入力から publish する Joy 横軸は tc2025 実機 Joy 互換のため `invert_left_stick_x=true` を既定とし、画面上の stick 点はキー入力方向のまま表示する。`cmd_vel_linear_scale=1.2`、`cmd_vel_angular_scale=1.5`、`cmd_vel_deadzone=0.05` により、publish する Joy 軸で `manual_teleop_node` が出す想定の `v` と `w` を GUI に表示する。`joy_topic` は相対 `joy`、`publish_rate_hz` は 20.0Hz とする。
 
 ### 19.4 起動方針
 
@@ -664,10 +666,11 @@ timeout 停止、turbo 倍率である。自律 cmd passthrough と waypoint fla
 
 ### 19.5 テスト計画
 
-`test_ps3_joy_sim_core.py` で L1/PS index、`w/s/a/d` の累積軸更新、Y 軸反転、斜め入力正規化、予測 `cmd_vel`、reset 相当、index 範囲外時の配列長維持を確認する。GUI 目視確認と ROS 2 topic 結合確認は `AGENTS.local.md` に従い、実機 driver と `ypspur_ros2` を起動しない範囲で実施する。
+`test_ps3_joy_sim_core.py` で L1/R1 index、`w/s/a/d` の累積軸更新、Y 軸反転、斜め入力正規化、予測 `cmd_vel`、reset 相当、index 範囲外時の配列長維持を確認する。GUI 目視確認と ROS 2 topic 結合確認は `AGENTS.local.md` に従い、実機 driver と `ypspur_ros2` を起動しない範囲で実施する。
 
 | 版 | 日付 | 変更概要 |
 | --- | --- | --- |
+| 0.9 | 2026-05-31 | 実機 PS3 (`joy_node`) 実測に基づき Joy index を確定。turbo を L2 (`buttons[6]`)、モード遷移トリガを R1 (`buttons[5]`) へ変更し、`ps_button_index` 既定値を 5 に更新した |
 | 0.8 | 2026-05-22 | 進行方向矢印の長さ一定化と復帰方向テキストの角度判定仕様を設計書へ反映した |
 | 0.7 | 2026-05-22 | 復帰方向テキストを進行方向矢印と同じ逆算 stick 角度ベースへ変更した |
 | 0.6 | 2026-05-22 | `drive_status_gui_node` の進行方向矢印を `cmd_vel` から逆算した stick 座標方向へ変更した |

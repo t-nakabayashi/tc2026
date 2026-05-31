@@ -42,7 +42,7 @@ class Ps3JoySimConfig:
     invert_left_stick_y: bool = False
     stick_step: float = 0.1
     l1_button_index: int = 4
-    ps_button_index: int = 16
+    ps_button_index: int = 5  # 実機モード遷移トリガ R1 (buttons[5]) に合わせる
     key_l1: str = 'l'
     key_ps: str = 'p'
     key_stick_forward: str = 'w'

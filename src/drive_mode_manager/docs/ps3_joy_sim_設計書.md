@@ -10,13 +10,13 @@
 
 ## 2. 背景・要求・スコープ
 
-`manual_teleop_node` と `drive_cmd_mux_node` は `/joy` を入力として、L1 デッドマン、L1 + PS 長押しによる手動遷移、L1 release による自律復帰を判定する。PS3 controller が手元にない開発環境でもこの経路を確認できるよう、`joy` topic の代替 publisher を用意する。
+`manual_teleop_node` と `drive_cmd_mux_node` は `/joy` を入力として、L1 デッドマン、L1 + R1 長押しによる手動遷移、L1 release による自律復帰を判定する。PS3 controller が手元にない開発環境でもこの経路を確認できるよう、`joy` topic の代替 publisher を用意する。
 
 本ノードの責務は以下である。
 
 - 相対 topic `joy` に `sensor_msgs/msg/Joy` を周期 publish する。
 - `l`, `p`, `w`, `s`, `a`, `d`, `space` のキーボード入力を Joy 配列へ変換する。
-- GUI 上に publish topic、publish rate、L1/PS、左 stick、axes/buttons、publish count を表示する。
+- GUI 上に publish topic、publish rate、L1/R1、左 stick、axes/buttons、publish count を表示する。
 - `/cmd_vel` や `/cmd_vel/manual` は publish せず、速度指令の決定は既存ノードに委ねる。
 
 ## 3. 全体構成・アーキテクチャ
@@ -74,7 +74,7 @@ Subscribe、Service、Action は持たない。
 | `invert_left_stick_y` | bool | `false` | キーボード前後入力から publish する左 stick 縦軸符号を反転する |
 | `stick_step` | double | `0.1` | `w`/`s`/`a`/`d` 1 回押下あたりの stick 加算量 |
 | `l1_button_index` | int | `4` | L1 button index |
-| `ps_button_index` | int | `16` | PS button index |
+| `ps_button_index` | int | `5` | モード遷移トリガ index（実機 PS3 では R1, `buttons[5]`） |
 | `key_l1` | string | `l` | L1 模擬キー |
 | `key_ps` | string | `p` | PS 模擬キー |
 | `key_stick_forward` | string | `w` | 左 stick 前 |
@@ -89,11 +89,13 @@ Subscribe、Service、Action は持たない。
 | `cmd_vel_linear_axis_invert` | bool | `false` | GUI 予測並進速度の符号反転 |
 | `cmd_vel_angular_axis_invert` | bool | `false` | GUI 予測角速度の符号反転。通常は `invert_left_stick_x` で Joy 軸を合わせるため変更しない |
 
-既定 index は現行 `manual_teleop_node` と `drive_cmd_mux_node` の設定に合わせる。
+既定 index は現行 `manual_teleop_node` と `drive_cmd_mux_node` の設定に合わせる。`ps_button_index=5`
+は実機モード遷移トリガ R1 (`buttons[5]`) に対応し、simulator の `key_ps`（既定 `p`）押下で同 index を
+立てる。
 
 ## 7. データモデル・内部状態
 
-`ps3_joy_sim_core.py` は `Ps3JoySimConfig` と `Ps3JoyState` を持つ。node は `pressed_keys: set[str]`、`stick_x`、`stick_y`、最新 `Ps3JoyState`、`publish_count` を lock 付きで保持する。GUI thread は key event で L1/PS の押下集合と stick 保持値を更新し、ROS executor thread は timer で最新状態を publish する。
+`ps3_joy_sim_core.py` は `Ps3JoySimConfig` と `Ps3JoyState` を持つ。node は `pressed_keys: set[str]`、`stick_x`、`stick_y`、最新 `Ps3JoyState`、`publish_count` を lock 付きで保持する。GUI thread は key event で L1/R1 の押下集合と stick 保持値を更新し、ROS executor thread は timer で最新状態を publish する。
 
 ## 8. 処理フロー・状態遷移
 
@@ -109,7 +111,7 @@ Subscribe、Service、Action は持たない。
 | `d` | `stick_x` へ `stick_step` を加算 |
 | `space` | 押下集合を clear し、`stick_x=0.0`、`stick_y=0.0` に戻す |
 
-L1 + PS 長押しの時間判定は `drive_cmd_mux_node` が行う。本ノードは押下状態と stick 保持値の publish のみ行う。stick 保持値から現在の `manual_teleop_node` 既定値に基づく予測 `cmd_vel` を算出し、GUI に表示するが、`cmd_vel` topic は publish しない。
+L1 + R1 長押しの時間判定は `drive_cmd_mux_node` が行う。本ノードは押下状態と stick 保持値の publish のみ行う。stick 保持値から現在の `manual_teleop_node` 既定値に基づく予測 `cmd_vel` を算出し、GUI に表示するが、`cmd_vel` topic は publish しない。
 
 ## 9. QoS・並行性・タイミング設計
 
@@ -131,13 +133,13 @@ ros2 launch drive_mode_manager ps3_joy_sim.launch.py
 
 ## 11. エラー処理・ログ・診断
 
-起動時に publish topic と rate を `info` で出す。index が配列長外の場合は該当配列を書き換えず、GUI 表示上の L1/PS 状態は保持するが、publish される buttons には反映されない。
+起動時に publish topic と rate を `info` で出す。index が配列長外の場合は該当配列を書き換えず、GUI 表示上の L1/R1 状態は保持するが、publish される buttons には反映されない。
 
 PyQt5 が利用できない環境では GUI node 起動に失敗する。その場合は headless の core pytest と、別手段の Joy publisher による結合確認に切り替える。
 
 ## 12. UI・可視化仕様
 
-GUI は Publish Topic、Publish Rate、L1 / PS / L1 + PS、Left Stick X / Y、予測 `cmd_vel` の `v` / `w`、Left Stick View、`axes[]`、`buttons[]`、Publish Count、Focus、Pressed Keys を表示する。
+GUI は Publish Topic、Publish Rate、L1 / R1 / L1 + R1、Left Stick X / Y、予測 `cmd_vel` の `v` / `w`、Left Stick View、`axes[]`、`buttons[]`、Publish Count、Focus、Pressed Keys を表示する。
 
 キーボード入力は GUI window に focus がある場合のみ取得される。`w`/`s`/`a`/`d` は押すたびに stick 保持値へ加算または減算され、離しても値を保持する。`space` で stick を neutral に戻す。Focus 表示が OFF の場合は window を選択してから操作する。
 
@@ -147,7 +149,7 @@ GUI は Publish Topic、Publish Rate、L1 / PS / L1 + PS、Left Stick X / Y、�
 
 ## 14. テスト計画・受け入れ条件
 
-単体テストでは L1/PS index、`w/s/a/d` の累積軸更新、Y 軸反転、斜め入力正規化、予測 `cmd_vel`、reset 相当、index 範囲外時の配列長維持を確認する。
+単体テストでは L1/R1 index、`w/s/a/d` の累積軸更新、Y 軸反転、斜め入力正規化、予測 `cmd_vel`、reset 相当、index 範囲外時の配列長維持を確認する。
 
 確認コマンドは以下である。
 
@@ -165,8 +167,8 @@ ROS 2 実行確認では、`AGENTS.local.md` に従い、`ypspur_ros2` や実機
 
 ## 16. 未決事項・今後の拡張
 
-- 実 controller の L1 / PS index と stick 符号は実機で別途確認する。
-- PS ボタンが実機 `/joy` で安定取得できない場合は、mux 側の手動遷移 trigger を別操作へ変更する。
+- 実 controller の L1 / PS index と stick 符号の実機確認（2026-05-31 完了。L1=`buttons[4]`、左 stick は `axes[1]`(前=+)/`axes[0]`(左=+)）。
+- PS が実機 `/joy` で安定取得できない場合の trigger 変更（2026-05-31 完了。PS は取得不可と判明し、手動遷移 trigger を R1=`buttons[5]` へ変更した）。
 - Start / Select の模擬は現行運用で使わないため追加しない。
 - GUI から `/drive_mode_status` を補助表示する拡張は、必要になった時点で検討する。
 
@@ -174,5 +176,6 @@ ROS 2 実行確認では、`AGENTS.local.md` に従い、`ypspur_ros2` や実機
 
 | 版 | 日付 | 変更概要 |
 | --- | --- | --- |
+| 0.3 | 2026-05-31 | 実機 PS3 (`joy_node`) 実測を反映。`ps_button_index` 既定値を 5（R1）へ変更し、GUI 表示ラベルを R1 に更新した |
 | 0.2 | 2026-05-22 | stick 累積入力、reset neutral、GUI の予測 `cmd_vel` 表示、斜め正規化既定有効を反映した |
 | 0.1 | 2026-05-21 | 初版。tmp 設計インプットを正式設計へ反映し、実装仕様を定義した |

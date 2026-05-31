@@ -111,7 +111,7 @@ class Ps3JoySimRosNode(Node):
         self.declare_parameter('invert_left_stick_y', False)
         self.declare_parameter('stick_step', 0.1)
         self.declare_parameter('l1_button_index', 4)
-        self.declare_parameter('ps_button_index', 16)
+        self.declare_parameter('ps_button_index', 5)
         self.declare_parameter('key_l1', 'l')
         self.declare_parameter('key_ps', 'p')
         self.declare_parameter('key_stick_forward', 'w')
@@ -279,8 +279,8 @@ class Ps3JoySimWindow:  # pragma: no cover - GUI は手動/統合確認で扱う
             ('topic', 'Publish Topic'),
             ('rate', 'Publish Rate'),
             ('l1', 'L1'),
-            ('ps', 'PS'),
-            ('combo', 'L1 + PS'),
+            ('ps', 'R1 (mode)'),
+            ('combo', 'L1 + R1'),
             ('stick_x', 'Left Stick X'),
             ('stick_y', 'Left Stick Y'),
             ('preview_v', 'Preview cmd_vel v'),
@@ -306,7 +306,7 @@ class Ps3JoySimWindow:  # pragma: no cover - GUI は手動/統合確認で扱う
         layout.addWidget(self._axes_text)
         layout.addWidget(QtWidgets.QLabel('buttons[]'))
         layout.addWidget(self._buttons_text)
-        bind = QtWidgets.QLabel('keys: l=L1, p=PS, w/s/a/d=left stick, space=reset')
+        bind = QtWidgets.QLabel('keys: l=L1, p=R1(mode), w/s/a/d=left stick, space=reset')
         bind.setStyleSheet('color: #555555;')
         layout.addWidget(bind)
 
