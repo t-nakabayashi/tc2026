@@ -39,11 +39,12 @@ def test_turbo_scales_enabled_command() -> None:
         ManualTeleopConfig(
             linear_scale=1.0,
             angular_scale=1.0,
-            turbo_button=5,
+            turbo_button=6,
             turbo_ratio=2.0,
         )
     )
-    core.update_joy([0.5, 0.5], [0, 0, 0, 0, 1, 1], 0.0)
+    # buttons[4]=L1 デッドマン, buttons[6]=L2 ターボ
+    core.update_joy([0.5, 0.5], [0, 0, 0, 0, 1, 0, 1], 0.0)
 
     result = core.compute(0.1)
 

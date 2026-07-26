@@ -147,8 +147,9 @@ ros2 launch ypspur_ros2 ypspur_ros2.launch.py \
 ros2 launch drive_mode_manager drive_mode_manager.launch.py
 ```
 
-起動直後は `drive_mode_manager` の既定モードが `autonomous` のため、Joy 入力で L1 と PS button
-を長押しして手動走行へ切り替える。GUI が不要な端末では
+起動直後は `drive_mode_manager` の既定モードが `autonomous` のため、Joy 入力で L1 (`buttons[4]`)
+と R1 (`buttons[5]`) を長押しして手動走行へ切り替える。実機 PS3 では PS ボタンが `joy_node` で
+安定取得できないため、モード遷移トリガには R1 を割り当てている。GUI が不要な端末では
 `ros2 launch drive_mode_manager drive_mode_manager.launch.py start_gui:=false` を使う。
 開発用 Joy simulator を使う場合は `joy_input:=ps3_joy_sim` を追加する。
 

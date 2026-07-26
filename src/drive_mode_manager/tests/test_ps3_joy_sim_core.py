@@ -8,12 +8,12 @@ from drive_mode_manager.ps3_joy_sim_core import (
 
 
 def test_l1_and_ps_buttons_are_mapped_to_configured_indices() -> None:
-    core = Ps3JoySimCore(Ps3JoySimConfig(l1_button_index=4, ps_button_index=16))
+    core = Ps3JoySimCore(Ps3JoySimConfig(l1_button_index=4, ps_button_index=5))
 
     state = core.compute({'l', 'p'})
 
     assert state.buttons[4] == 1
-    assert state.buttons[16] == 1
+    assert state.buttons[5] == 1  # 実機モード遷移トリガ R1 (buttons[5])
     assert state.l1_pressed
     assert state.ps_pressed
 
