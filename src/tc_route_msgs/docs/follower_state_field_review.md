@@ -28,7 +28,7 @@
 - `route_follower/route_follower_node.py`: Core 出力から現在地とターゲットの距離を算出し、`active_target_distance_m` へ設定。ログ出力も新しいインデックス名称を使用する。
 - `robot_console/gui_core.py`: `FollowerStateView` を新フィールドへ追従させ、ターゲット距離カードの分母に `segment_length_m` を適用する。フォールバック距離は `active_target_distance_m` を使用する。
 - `robot_console/ui_main.py`: 次ウェイポイントのカードを削除し、表示ラベルを `active_waypoint_*` 系へ差し替えた。
-- `robot_console/tools/mock_ui.py` / `tools/tests/test_gui_core.py`: テスト・モックデータを新フィールドへ更新し、進捗カード・区間長表示を再現。
+- `robot_console/tools/mock_ui.py` / `tools/tests/test_robot_console_gui_core.py`: テスト・モックデータを新フィールドへ更新し、進捗カード・区間長表示を再現。
 
 ## 今後の確認事項
 - `segment_length_m` が 0.0 の場合の扱い（初期化直後や単独ウェイポイント）を GUI 側でどう表現するか運用確認する。

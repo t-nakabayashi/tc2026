@@ -8,12 +8,23 @@ package_name = 'robot_console'
 
 
 def collect_data_files(directory: str) -> List[str]:
-    """指定ディレクトリ配下のファイル一覧を返す。"""
+    """指定ディレクトリ配下のファイル一覧を返す。
+
+    `__pycache__` などの生成物は install 対象から除外する。混入させると、
+    ソース側の改名・削除時に install 済みの古い生成物と衝突し、
+    `--symlink-install` の再ビルドが失敗することがある。
+    """
 
     base_path = Path(directory)
     if not base_path.exists():
         return []
-    return [str(path) for path in base_path.rglob('*') if path.is_file()]
+    return [
+        str(path)
+        for path in base_path.rglob('*')
+        if path.is_file()
+        and '__pycache__' not in path.parts
+        and path.suffix not in ('.pyc', '.pyo')
+    ]
 
 
 setup(
