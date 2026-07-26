@@ -10,6 +10,17 @@ ROS 2 Jazzy ワークスペース。
 | [`src/rtk_gps_um982`](src/rtk_gps_um982/README.md)          | Unicore UM982 RTK GNSS ドライバ。NavSatFix / Imu / RtkStatus を配信  |
 | [`src/rtk_gps_um982_msgs`](src/rtk_gps_um982_msgs/)         | 上記用カスタム msg (`RtkStatus`)                                     |
 | [`src/ypspur_ros2`](src/ypspur_ros2/README.md)              | yp-spur ベースの差動駆動ロボット制御。`/cmd_vel` で動かす            |
+| `src/livox_ros_driver2`                                     | Livox Mid-360 ドライバ (外部 submodule)。`/livox/lidar` を配信       |
+| [`src/livox_sdk2_vendor`](src/livox_sdk2_vendor/README.md)  | Livox-SDK2 を colcon の install 空間へ配置する vendor パッケージ     |
+| `src/FAST_LIO`                                              | LiDAR-inertial odometry (外部 submodule)。`/Odometry` を配信         |
+
+Top-URG (UTM-30LX) は apt の `ros-jazzy-urg-node` を使う。ワークスペースには含めない。
+
+### 自己位置 / 座標変換
+| パッケージ                                                  | 役割                                                                 |
+| ----------------------------------------------------------- | -------------------------------------------------------------------- |
+| [`src/geo_pose_converter`](src/geo_pose_converter/README.md) | GNSS の LLH を map ENU へ変換し `/localization/pose_enu` を配信。表示用の LLH 逆変換も提供 |
+| [`src/tc_geo_msgs`](src/tc_geo_msgs/)                       | 地理座標系で共有する msg 定義 (`GeoPose`, `MapProjection` ほか)       |
 
 ### 経路計画・追従
 | パッケージ                                                  | 役割                                                                 |
@@ -35,6 +46,8 @@ ROS 2 Jazzy ワークスペース。
 | パッケージ                                                  | 役割                                                                 |
 | ----------------------------------------------------------- | -------------------------------------------------------------------- |
 | [`src/yolo_detector`](src/yolo_detector/README.md)          | USB カメラ画像を YOLO (PyTorch / NCNN) で物体検出し、検出画像・`Detection2DArray` を配信 |
+| [`src/traffic_signal_recognizer`](src/traffic_signal_recognizer/) | 検出結果から信号の GO / STOP を判定し `/sig_recog` を配信         |
+| [`src/road_blockage_detector`](src/road_blockage_detector/)  | 検出結果から経路封鎖を判定し `/road_blocked` を配信                  |
 | [`src/robot_console`](src/robot_console/README.md)          | 走行状態・障害物回避・経路進捗・ノード起動を一画面で監視する tkinter GUI ダッシュボード |
 
 ワークスペース横断の仕様書は [`docs/`](docs/)、パッケージ固有の設計書は各パッケージ
@@ -48,6 +61,18 @@ ROS 2 Jazzy ワークスペース。
 - `ros_gz_sim`, `ros_gz_bridge`, `ros_gz_interfaces`
 - Python 3
 - (パッケージごとの追加要件は各 README を参照)
+
+apt で導入する依存:
+
+```bash
+sudo apt install ros-jazzy-urg-node ros-jazzy-pcl-ros
+```
+
+- `ros-jazzy-urg-node` は Top-URG (UTM-30LX) のドライバ。`/scan` を配信する。
+- `ros-jazzy-pcl-ros` は `FAST_LIO` のビルド依存。
+
+Livox-SDK2 は `livox_sdk2_vendor` が colcon のビルド時に同梱ソースから
+ビルドするため、`sudo make install` による `/usr/local` への導入は不要である。
 
 ## Codex ローカル実行設定
 
@@ -238,10 +263,22 @@ pylon ありで障害物回避を確認する場合は、`obstacle_monitor` も�
 
 ## 外部依存 (submodule)
 
-ビルド前に `git submodule update --init --recursive` が必要。
+ビルド前に `git submodule update --init --recursive` が必要。`src/FAST_LIO` は
+`include/ikd-Tree` を入れ子 submodule として持つため、`--recursive` を省略すると
+ビルドが `ikd_Tree.cpp` 不在で失敗する。
 
-- `src/rtk_gps_um982/third_party/UM982-RTK-GPS-Library` (MIT)
-- `src/ypspur_ros2/third_party/yp-spur` (MIT) — Issue #245 のパッチを CMake が自動適用
+| submodule | 追従先 | 備考 |
+| --- | --- | --- |
+| `src/rtk_gps_um982/third_party/UM982-RTK-GPS-Library` | `t-nakabayashi` fork | MIT |
+| `src/ypspur_ros2/third_party/yp-spur` | `openspur/yp-spur` | MIT。Issue #245 のパッチを CMake が自動適用 |
+| `src/livox_ros_driver2` | `atinfinity/livox_ros_driver2` の `jazzy` | MIT。upstream は `package.xml` を持たず colcon で直接ビルドできないため、ROS 2 専用に整理された fork を使う |
+| `src/livox_sdk2_vendor/third_party/Livox-SDK2` | `Livox-SDK/Livox-SDK2` | MIT。GCC 13 対応パッチを CMake が自動適用 |
+| `src/FAST_LIO` | `t-nakabayashi` fork の `jazzy` | GPLv2。C++17 化のみ upstream から変更 |
+
+`livox_ros_driver2` は Livox-SDK2 を `find_library` で `/usr/local/lib` から探すが、
+本ワークスペースでは `livox_sdk2_vendor` が SDK を colcon の install 空間へ置く。
+その依存関係はワークスペース直下の [`colcon.meta`](colcon.meta) で宣言しており、
+submodule の `package.xml` は書き換えていない。
 
 ## ライセンス
 

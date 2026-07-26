@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>livox_sdk2_vendor</name>
+  <version>0.1.0</version>
+  <description>
+    Livox-SDK2 を colcon の install 空間へ配置する vendor パッケージ。
+    third_party の submodule を直接変更せず、ビルド用コピーへ GCC 13 対応の
+    パッチを適用してビルドする。/usr/local への sudo インストールを不要にし、
+    livox_ros_driver2 が CMAKE_PREFIX_PATH 経由で SDK を解決できるようにする。
+  </description>
+  <maintainer email="t_nakabayashi@nec.com">Tatsuhiko Nakabayashi</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- Livox-SDK2 のビルド用コピーへパッチを適用するために使用する -->
+  <buildtool_depend>git</buildtool_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

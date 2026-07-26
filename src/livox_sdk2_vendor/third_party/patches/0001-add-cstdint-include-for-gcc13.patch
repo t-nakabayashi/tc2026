@@ -1,0 +1,38 @@
+Livox-SDK2 を GCC 13 (Ubuntu 24.04 / ROS 2 Jazzy) でビルドできるようにする。
+
+sdk_core/comm/define.h と sdk_core/logger_handler/file_manager.h が
+<cstdint> を include せずに std::uint8_t / std::uint16_t を使用しており、
+推移的 include が厳格化された GCC 13 では下記のエラーで停止する。
+
+  sdk_core/comm/define.h:248:8: error:
+    'uint8_t' in namespace 'std' does not name a type
+
+出典: upstream PR #111 (Add missing includes for ubuntu 24.04 comp)
+      https://github.com/Livox-SDK/Livox-SDK2/pull/111
+状態: 2026-07-26 時点で未マージ (closed)。同種の PR に #83 #85 #91 #99
+      #108 #121 #126 #131 があるがいずれも未マージ。
+
+diff --git a/sdk_core/comm/define.h b/sdk_core/comm/define.h
+index 66996bf..2de41ff 100644
+--- a/sdk_core/comm/define.h
++++ b/sdk_core/comm/define.h
+@@ -31,6 +31,7 @@
+ #include <functional>
+ #include <vector>
+ #include <atomic>
++#include <cstdint>
+ 
+ #include "livox_lidar_def.h"
+ 
+diff --git a/sdk_core/logger_handler/file_manager.h b/sdk_core/logger_handler/file_manager.h
+index 242a431..14cd76a 100644
+--- a/sdk_core/logger_handler/file_manager.h
++++ b/sdk_core/logger_handler/file_manager.h
+@@ -28,6 +28,7 @@
+ #include <string>
+ #include <vector>
+ #include <map>
++#include <cstdint>
+ 
+ namespace livox {
+ namespace lidar {

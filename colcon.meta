@@ -1,0 +1,21 @@
+{
+  "comment": [
+    "submodule として取り込んだ外部パッケージへ、その package.xml を書き換えずに",
+    "ワークスペース固有の依存関係を追加するための colcon メタデータ。",
+    "colcon は既定で ./colcon.meta を読み込む。",
+    "",
+    "livox_ros_driver2 は Livox-SDK2 を find_library で探すが、upstream の探索先は",
+    "/usr/local/lib 固定で sudo install を前提としている。本ワークスペースでは",
+    "livox_sdk2_vendor が SDK を colcon の install 空間へ配置するため、",
+    "依存関係を宣言してビルド順と CMAKE_PREFIX_PATH を確定させる。",
+    "",
+    "FAST_LIO は package.xml で livox_ros_driver2 に依存しているため追加宣言は不要。"
+  ],
+  "names": {
+    "livox_ros_driver2": {
+      "dependencies": [
+        "livox_sdk2_vendor"
+      ]
+    }
+  }
+}
