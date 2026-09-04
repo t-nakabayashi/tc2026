@@ -664,7 +664,7 @@ timeout 停止、turbo 倍率である。自律 cmd passthrough と waypoint fla
 
 ### 19.5 テスト計画
 
-`test_ps3_joy_sim_core.py` で L1/PS index、`w/s/a/d` の累積軸更新、Y 軸反転、斜め入力正規化、予測 `cmd_vel`、reset 相当、index 範囲外時の配列長維持を確認する。GUI 目視確認と ROS 2 topic 結合確認は `AGENTS.local.md` に従い、実機 driver と `ypspur_ros2` を起動しない範囲で実施する。
+`test_ps3_joy_sim_core.py` で L1/PS index、`w/s/a/d` の累積軸更新、Y 軸反転、斜め入力正規化、予測 `cmd_vel`、reset 相当、index 範囲外時の配列長維持を確認する。GUI 目視確認と ROS 2 topic 結合確認は `ros2-local-run` スキルに従い、実機 driver と `ypspur_ros2` を起動しない範囲で実施する。
 
 | 版 | 日付 | 変更概要 |
 | --- | --- | --- |

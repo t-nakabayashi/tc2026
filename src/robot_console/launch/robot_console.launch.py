@@ -60,6 +60,25 @@ _TOPIC_CONFIGS = [
     ('active_target_topic', 'active_target', '/active_target', 'ターゲット姿勢トピック'),
     ('pose_enu_topic', 'localization/pose_enu', '/localization/pose_enu', 'ENU自己位置トピック'),
     ('cmd_vel_topic', 'cmd_vel', '/cmd_vel', '速度指令トピック'),
+    (
+        'cmd_vel_autonomous_topic',
+        'cmd_vel/autonomous',
+        '/cmd_vel/autonomous',
+        '自律速度指令トピック',
+    ),
+    (
+        'drive_mode_status_topic',
+        'drive_mode_status',
+        '/drive_mode_status',
+        '走行モード状態トピック',
+    ),
+    (
+        'odom_topic',
+        'odom',
+        '/ypspur_ros/odom',
+        'オドメトリトピック（実機のypspur_ros2、Gazebo bridge、robot_simulatorの'
+        'いずれも既定で/ypspur_ros/odomへ publish する）',
+    ),
 ]
 
 
@@ -70,12 +89,16 @@ def _launch_setup(context: LaunchContext, *args, **kwargs) -> List[Node]:
     remappings = [
         (from_name, LaunchConfiguration(arg_name)) for arg_name, from_name, *_ in _TOPIC_CONFIGS
     ]
+    # 正式UIはPyQt5版（robot_console_qt）である。旧tkinter版（robot_console）は
+    # entry pointとしては残すが、本launchからは起動しない。
+    # 新UIはログ保存先をROSパラメータではなくCLI引数で受け取る（ConsoleCoreを
+    # Node生成前に構築するため）。
     node = Node(
         package='robot_console',
-        executable='robot_console',
-        name='robot_console',
+        executable='robot_console_qt',
+        name='robot_console_qt',
         output='screen',
-        parameters=[{'console_log_directory': log_dir}],
+        arguments=['--console-log-directory', log_dir],
         remappings=remappings,
     )
     return [node]

@@ -50,7 +50,7 @@ setup(
     maintainer='user',
     maintainer_email='user@todo.todo',
     description='YOLO11n object detection for ROS2',
-    license='TODO: License declaration',
+    license='MIT',
     entry_points={
         'console_scripts': [
             'yolo_node = yolo_detector.yolo_node:main',

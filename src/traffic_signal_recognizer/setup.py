@@ -41,7 +41,7 @@ setup(
     maintainer='user',
     maintainer_email='user@todo.todo',
     description='Traffic signal GO/STOP recognizer based on YOLO detections',
-    license='TODO: License declaration',
+    license='MIT',
     entry_points={
         'console_scripts': [
             'traffic_signal_recognizer = '

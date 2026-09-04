@@ -5,7 +5,7 @@
   <version>0.0.1</version>
   <description>Road blockage decision node based on YOLO detections</description>
   <maintainer email="user@todo.todo">user</maintainer>
-  <license>TODO: License declaration</license>
+  <license>MIT</license>
 
   <depend>geometry_msgs</depend>
   <depend>cv_bridge</depend>

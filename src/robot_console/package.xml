@@ -11,6 +11,8 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>python3-tk</exec_depend>
+  <exec_depend>python3-pyqt5</exec_depend>
+  <exec_depend>python3-pyqt5.qtwebengine</exec_depend>
   <exec_depend>python3-pil</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
@@ -22,6 +24,9 @@
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>visualization_msgs</exec_depend>
   <exec_depend>tc_route_msgs</exec_depend>
+  <exec_depend>tc_geo_msgs</exec_depend>
+  <exec_depend>rtk_gps_um982_msgs</exec_depend>
+  <test_depend>python3-pytest-forked</test_depend>
 
   <export>
     <build_type>ament_python</build_type>

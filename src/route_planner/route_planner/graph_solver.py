@@ -114,7 +114,9 @@ def _load_waypoint_csv_length(path: str) -> Tuple[float, List[Tuple[float, float
         return 0.0, []
 
     has_x = "x" in rows[0] and "y" in rows[0]
-    has_lonlat = ("lon" in rows[0] and "lat" in rows[0]) or ("lat" in rows[0] and "lon" in rows[0])
+    has_lat = "lat" in rows[0] or "latitude" in rows[0]
+    has_lon = "lon" in rows[0] or "longitude" in rows[0]
+    has_lonlat = has_lat and has_lon
 
     if has_x:
         pts = [(float(r.get("x", 0.0)), float(r.get("y", 0.0))) for r in rows]

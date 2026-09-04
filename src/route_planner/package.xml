@@ -10,6 +10,7 @@
   <depend>rclpy</depend>
   <depend>tc_route_msgs</depend>
   <depend>tc_geo_msgs</depend>
+  <depend>geo_pose_converter</depend>
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>

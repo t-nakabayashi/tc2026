@@ -231,7 +231,7 @@ odom_pub_->publish(odom);
 - [ ] `cmake` の出力に「yp-spur patch applied」または「already applied」が出る
 - [ ] `ypspur-coordinator` 起動済の状態で `ros2 launch ypspur_ros2 ypspur_ros2.launch.py`
       が起動でき、`ros2 topic pub /cmd_vel ...` で実機が反応する
-- [ ] `ros2 topic echo /odom` で姿勢/速度が出る
+- [ ] `ros2 topic echo /ypspur_ros/odom` で姿勢/速度が出る（launch既定のremap先）
 - [ ] cmd_vel を止めると `cmd_vel_timeout_s` 後にロボットが停止する
 
 ## 9. 依存関係

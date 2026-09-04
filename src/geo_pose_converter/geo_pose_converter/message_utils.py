@@ -14,11 +14,10 @@ from rtk_gps_um982_msgs.msg import RtkStatus
 from tc_geo_msgs.msg import GeoPoint, GeoPose, GeoPoseWithQuality, MapProjection
 
 from geo_pose_converter.geo_core import (
-    EnuPoint,
     LlhPoint,
     ProjectionConfig,
     bearing_from_map_delta,
-    enu_to_llh,
+    enu_to_llh_on_ground,
     heading_deg_to_yaw_enu_rad,
     llh_to_enu,
     quaternion_to_yaw,
@@ -79,12 +78,13 @@ def make_geo_pose(
     heading_deg: float = 0.0,
     has_heading: bool = False,
     child_frame_id: str = "",
+    has_altitude: bool = True,
 ) -> GeoPose:
     """GeoPose msgを生成する."""
 
     msg = GeoPose()
     msg.header = header
-    msg.point = make_geo_point(point)
+    msg.point = make_geo_point(point, has_altitude)
     msg.heading_deg = float(heading_deg)
     msg.has_heading = bool(has_heading)
     msg.yaw_enu_rad = float(heading_deg_to_yaw_enu_rad(heading_deg)) if has_heading else 0.0
@@ -154,15 +154,28 @@ def llh_to_pose_with_covariance(
     has_heading: bool,
     projection: ProjectionConfig,
 ) -> PoseWithCovarianceStamped:
-    """LLH poseをmap ENUのPoseWithCovarianceStampedへ変換する."""
+    """LLH poseをmap ENUのPoseWithCovarianceStampedへ変換する.
 
-    enu = llh_to_enu(point, projection)
+    本プロジェクトでは走行用ENU poseを2Dとして扱うため、zは高度から復元せず0.0に
+    正規化する。GNSS高度はLLH系topic側で保持する。
+
+    水平座標(x, y)の算出にもGNSS実高度ではなく `origin_altitude` を用いる。
+    local tangent planeでは同一の緯度経度でも高度が変わると水平座標がずれるため
+    (原点距離d[m]に対し 高度差 × d/R)、高度規約が経路ごとに異なると同じ地点が
+    別のENU座標になる。route waypointは `origin_altitude` 基準でENU化される
+    (`route_builder._set_pose_from_llh()`) ため、自己位置側も同じ基準へ揃える。
+    東京駅原点・つくば(52.7km)では、高度62mの実測値をそのまま使うと約0.48mの
+    系統誤差になる。
+    """
+
+    ground_point = LlhPoint(point.latitude, point.longitude, projection.origin_altitude)
+    enu = llh_to_enu(ground_point, projection)
     msg = PoseWithCovarianceStamped()
     msg.header = header
     msg.header.frame_id = projection.map_frame_id
     msg.pose.pose.position.x = enu.x
     msg.pose.pose.position.y = enu.y
-    msg.pose.pose.position.z = enu.z
+    msg.pose.pose.position.z = 0.0
     yaw = heading_deg_to_yaw_enu_rad(heading_deg) - projection.map_yaw_offset_rad if has_heading else 0.0
     qx, qy, qz, qw = yaw_to_quaternion(yaw)
     msg.pose.pose.orientation.x = qx
@@ -177,15 +190,24 @@ def pose_to_llh_pose(
     pose: Pose,
     projection: ProjectionConfig,
     child_frame_id: str = "",
+    has_altitude: bool = False,
 ) -> GeoPose:
-    """map ENU PoseをGeoPoseへ変換する."""
+    """map ENU PoseをGeoPoseへ変換する.
 
-    enu = EnuPoint(
+    ENU poseは走行用2D座標として扱うため、既定では逆投影した高度を有効値としない。
+    zも `llh_to_enu_pose()` が0.0へ正規化した値が入るため、そのまま逆投影すると
+    原点から離れた地点で水平位置に誤差が出る(原点52.7km先で約1.8m)。
+    水平座標(x, y)を地表点として扱う `enu_to_llh_on_ground()` を用いることで、
+    `llh_to_enu_pose()` との往復を一致させる。基準高度は他経路（waypoint生成・
+    GNSS自己位置）と同じ `origin_altitude` を用い、ENU⇔LLH変換の高度規約を統一する。
+    """
+
+    point = enu_to_llh_on_ground(
         float(pose.position.x),
         float(pose.position.y),
-        float(pose.position.z),
+        projection,
+        ground_altitude=projection.origin_altitude,
     )
-    point = enu_to_llh(enu, projection)
     yaw_map = quaternion_to_yaw(
         pose.orientation.x,
         pose.orientation.y,
@@ -193,7 +215,7 @@ def pose_to_llh_pose(
         pose.orientation.w,
     )
     heading = yaw_enu_rad_to_heading_deg(yaw_map + projection.map_yaw_offset_rad)
-    return make_geo_pose(header, point, heading, True, child_frame_id)
+    return make_geo_pose(header, point, heading, True, child_frame_id, has_altitude)
 
 
 def make_active_target_llh(
@@ -217,11 +239,21 @@ def make_active_target_llh(
     msg.is_avoidance_subgoal = bool(is_avoidance_subgoal)
     msg.target_kind = "avoidance_subgoal" if is_avoidance_subgoal else "route_waypoint"
     if current_pose is not None:
+        current_altitude = (
+            current_pose.point.altitude
+            if current_pose.point.has_altitude
+            else projection.origin_altitude
+        )
+        target_altitude = (
+            target_pose.point.altitude
+            if target_pose.point.has_altitude
+            else projection.origin_altitude
+        )
         cur = llh_to_enu(
             LlhPoint(
                 current_pose.point.latitude,
                 current_pose.point.longitude,
-                current_pose.point.altitude,
+                current_altitude,
             ),
             projection,
         )
@@ -229,7 +261,7 @@ def make_active_target_llh(
             LlhPoint(
                 target_pose.point.latitude,
                 target_pose.point.longitude,
-                target_pose.point.altitude,
+                target_altitude,
             ),
             projection,
         )

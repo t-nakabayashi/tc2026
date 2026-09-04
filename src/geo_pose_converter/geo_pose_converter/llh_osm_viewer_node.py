@@ -5,7 +5,7 @@
 
 route_geo_projector_node が publish する /localization/pose_llh
 (tc_geo_msgs/GeoPoseWithQuality) を購読し、ブラウザ上のOpenStreetMapに
-現在位置と方位を重畳表示する。
+現在位置、active route、active targetを重畳表示する。
 
 表示アイコン:
   - 底辺:高さ = 1:2 の二等辺三角形
@@ -22,27 +22,41 @@ from __future__ import annotations
 import json
 import math
 import threading
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Optional
 
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from tc_geo_msgs.msg import GeoPoseWithQuality
+from tc_route_msgs.msg import ActiveTargetLlh, Route
 
 
 class PoseStore:
-    """HTTPサーバスレッドとROSスレッドの間で最新姿勢を共有するクラス."""
+    """HTTPサーバスレッドとROSスレッドの間でビューア状態を共有するクラス."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._pose: Optional[dict[str, Any]] = None
+        self._route: Optional[dict[str, Any]] = None
+        self._active_target: Optional[dict[str, Any]] = None
 
     def update(self, pose: dict[str, Any]) -> None:
         """最新姿勢を更新する."""
         with self._lock:
             self._pose = dict(pose)
+
+    def update_route(self, route: dict[str, Any]) -> None:
+        """最新route overlayを更新する."""
+        with self._lock:
+            self._route = dict(route)
+
+    def update_active_target(self, active_target: dict[str, Any]) -> None:
+        """最新active target overlayを更新する."""
+        with self._lock:
+            self._active_target = dict(active_target)
 
     def get(self) -> Optional[dict[str, Any]]:
         """最新姿勢を取得する."""
@@ -50,6 +64,160 @@ class PoseStore:
             if self._pose is None:
                 return None
             return dict(self._pose)
+
+    def get_state(self, stale_timeout_s: float, lost_timeout_s: float) -> dict[str, Any]:
+        """ビューア全体の最新状態を取得する."""
+        with self._lock:
+            pose = dict(self._pose) if self._pose is not None else None
+            route = dict(self._route) if self._route is not None else None
+            active_target = (
+                dict(self._active_target)
+                if self._active_target is not None
+                else None
+            )
+
+        now = time.time()
+        pose_status = 'NO_DATA'
+        if pose is not None:
+            age_s = now - float(pose.get('received_wall_time', now))
+            pose['age_s'] = age_s
+            if age_s >= lost_timeout_s:
+                pose_status = 'LOST'
+            elif age_s >= stale_timeout_s:
+                pose_status = 'STALE'
+            else:
+                pose_status = 'OK'
+
+        return {
+            'pose': pose,
+            'route': route,
+            'active_target': active_target,
+            'pose_status': pose_status,
+        }
+
+
+def _parse_bool(value: Any) -> bool:
+    """ROS parameter値をboolとして解釈する."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ('1', 'true', 'yes', 'on')
+    return bool(value)
+
+
+def _is_valid_lat_lon(latitude: float, longitude: float) -> bool:
+    """緯度経度が地図表示可能な範囲か判定する."""
+    return (
+        math.isfinite(latitude)
+        and math.isfinite(longitude)
+        and -90.0 <= latitude <= 90.0
+        and -180.0 <= longitude <= 180.0
+    )
+
+
+def _geo_pose_to_dict(geo_pose: Any) -> Optional[dict[str, Any]]:
+    """GeoPose互換msgをviewer JSON用dictへ変換する."""
+    latitude = float(geo_pose.point.latitude)
+    longitude = float(geo_pose.point.longitude)
+    if not _is_valid_lat_lon(latitude, longitude):
+        return None
+
+    has_heading = bool(geo_pose.has_heading)
+    heading_deg = float(geo_pose.heading_deg) if has_heading else 0.0
+    if not math.isfinite(heading_deg):
+        heading_deg = 0.0
+        has_heading = False
+
+    return {
+        'latitude': latitude,
+        'longitude': longitude,
+        'altitude': float(geo_pose.point.altitude),
+        'has_altitude': bool(geo_pose.point.has_altitude),
+        'heading_deg': heading_deg % 360.0,
+        'has_heading': has_heading,
+        'child_frame_id': str(geo_pose.child_frame_id),
+    }
+
+
+def _pose_llh_to_dict(msg: GeoPoseWithQuality) -> Optional[dict[str, Any]]:
+    """GeoPoseWithQualityをviewer JSON用dictへ変換する."""
+    pose = _geo_pose_to_dict(msg.pose)
+    if pose is None:
+        return None
+
+    stamp_sec = (
+        float(msg.header.stamp.sec)
+        + float(msg.header.stamp.nanosec) * 1.0e-9
+    )
+    pose.update(
+        {
+            'status_text': str(msg.status_text),
+            'fix_quality': int(msg.fix_quality),
+            'fusion_status': int(msg.fusion_status),
+            'source': int(msg.source),
+            'stamp': stamp_sec,
+            'frame_id': str(msg.header.frame_id),
+            'received_wall_time': time.time(),
+        }
+    )
+    return pose
+
+
+def _route_to_dict(msg: Route, max_waypoints: int) -> dict[str, Any]:
+    """Routeをviewer JSON用dictへ変換する."""
+    waypoints: list[dict[str, Any]] = []
+    skipped = 0
+    for wp in msg.waypoints:
+        if len(waypoints) >= max_waypoints:
+            skipped += 1
+            continue
+        if not bool(wp.has_geo_pose):
+            skipped += 1
+            continue
+        geo_pose = _geo_pose_to_dict(wp.geo_pose)
+        if geo_pose is None:
+            skipped += 1
+            continue
+        geo_pose.update(
+            {
+                'index': int(wp.index),
+                'label': str(wp.label),
+                'line_stop': bool(wp.line_stop),
+                'signal_stop': bool(wp.signal_stop),
+                'segment_is_fixed': bool(wp.segment_is_fixed),
+            }
+        )
+        waypoints.append(geo_pose)
+
+    return {
+        'route_id': str(msg.route_id),
+        'version': int(msg.version),
+        'total_distance': float(msg.total_distance),
+        'waypoints': waypoints,
+        'skipped_waypoints': skipped,
+        'projection_id': str(msg.projection.projection_id),
+        'map_frame_id': str(msg.map_frame_id),
+        'earth_frame_id': str(msg.earth_frame_id),
+    }
+
+
+def _active_target_to_dict(msg: ActiveTargetLlh) -> Optional[dict[str, Any]]:
+    """ActiveTargetLlhをviewer JSON用dictへ変換する."""
+    target_pose = _geo_pose_to_dict(msg.target_pose)
+    if target_pose is None:
+        return None
+    target_pose.update(
+        {
+            'route_version': int(msg.route_version),
+            'target_index': int(msg.target_index),
+            'target_label': str(msg.target_label),
+            'distance_m': float(msg.distance_m),
+            'bearing_deg': float(msg.bearing_deg),
+            'is_avoidance_subgoal': bool(msg.is_avoidance_subgoal),
+            'target_kind': str(msg.target_kind),
+        }
+    )
+    return target_pose
 
 
 class LlhOsmViewerNode(Node):
@@ -59,6 +227,8 @@ class LlhOsmViewerNode(Node):
         super().__init__('llh_osm_viewer')
 
         self.declare_parameter('pose_llh_topic', '/localization/pose_llh')
+        self.declare_parameter('active_route_topic', '/active_route')
+        self.declare_parameter('active_target_llh_topic', '/route/active_target_llh')
         self.declare_parameter('http_host', '127.0.0.1')
         self.declare_parameter('http_port', 8765)
         self.declare_parameter('open_browser', True)
@@ -68,31 +238,59 @@ class LlhOsmViewerNode(Node):
         self.declare_parameter('default_longitude', 140.111)
         self.declare_parameter('default_zoom', 17)
         self.declare_parameter('triangle_height_px', 48.0)
+        self.declare_parameter('max_route_waypoints', 2000)
+        self.declare_parameter('stale_timeout_s', 1.0)
+        self.declare_parameter('lost_timeout_s', 3.0)
 
         self._pose_store = PoseStore()
         self._http_server: Optional[ThreadingHTTPServer] = None
 
         self._pose_llh_topic = str(self.get_parameter('pose_llh_topic').value)
+        self._active_route_topic = str(self.get_parameter('active_route_topic').value)
+        self._active_target_llh_topic = str(
+            self.get_parameter('active_target_llh_topic').value
+        )
         self._http_host = str(self.get_parameter('http_host').value)
         self._http_port = int(self.get_parameter('http_port').value)
-        self._open_browser = bool(self.get_parameter('open_browser').value)
+        self._open_browser = _parse_bool(self.get_parameter('open_browser').value)
         self._poll_interval_ms = int(self.get_parameter('poll_interval_ms').value)
         self._initial_zoom = int(self.get_parameter('initial_zoom').value)
         self._default_latitude = float(self.get_parameter('default_latitude').value)
         self._default_longitude = float(self.get_parameter('default_longitude').value)
         self._default_zoom = int(self.get_parameter('default_zoom').value)
         self._triangle_height_px = float(self.get_parameter('triangle_height_px').value)
+        self._max_route_waypoints = int(self.get_parameter('max_route_waypoints').value)
+        self._stale_timeout_s = float(self.get_parameter('stale_timeout_s').value)
+        self._lost_timeout_s = float(self.get_parameter('lost_timeout_s').value)
 
         qos_stream = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
             history=HistoryPolicy.KEEP_LAST,
             depth=10,
         )
+        qos_route = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
 
         self.create_subscription(
             GeoPoseWithQuality,
             self._pose_llh_topic,
             self._on_pose_llh,
+            qos_stream,
+        )
+        self.create_subscription(
+            Route,
+            self._active_route_topic,
+            self._on_active_route,
+            qos_route,
+        )
+        self.create_subscription(
+            ActiveTargetLlh,
+            self._active_target_llh_topic,
+            self._on_active_target_llh,
             qos_stream,
         )
 
@@ -105,7 +303,8 @@ class LlhOsmViewerNode(Node):
         viewer_url = f'http://{self._http_host}:{self._http_port}/'
         self.get_logger().info(
             'llh_osm_viewer node started: '
-            f'topic={self._pose_llh_topic}, url={viewer_url}'
+            f'pose={self._pose_llh_topic}, route={self._active_route_topic}, '
+            f'target={self._active_target_llh_topic}, url={viewer_url}'
         )
 
         if self._open_browser:
@@ -129,51 +328,27 @@ class LlhOsmViewerNode(Node):
 
     def _on_pose_llh(self, msg: GeoPoseWithQuality) -> None:
         """LLH姿勢メッセージ受信時の処理."""
-        latitude = float(msg.pose.point.latitude)
-        longitude = float(msg.pose.point.longitude)
-
-        if not math.isfinite(latitude) or not math.isfinite(longitude):
-            self.get_logger().warn('Ignored non-finite latitude/longitude.')
-            return
-
-        if not (-90.0 <= latitude <= 90.0 and -180.0 <= longitude <= 180.0):
+        pose = _pose_llh_to_dict(msg)
+        if pose is None:
             self.get_logger().warn(
-                'Ignored out-of-range latitude/longitude: '
-                f'lat={latitude}, lon={longitude}'
+                'Ignored invalid latitude/longitude in pose_llh message.'
             )
             return
+        self._pose_store.update(pose)
 
-        has_heading = bool(msg.pose.has_heading)
-        heading_deg = float(msg.pose.heading_deg) if has_heading else 0.0
+    def _on_active_route(self, msg: Route) -> None:
+        """active_route受信時の処理."""
+        self._pose_store.update_route(_route_to_dict(msg, self._max_route_waypoints))
 
-        if not math.isfinite(heading_deg):
-            heading_deg = 0.0
-            has_heading = False
-
-        heading_deg = heading_deg % 360.0
-
-        stamp_sec = (
-            float(msg.header.stamp.sec)
-            + float(msg.header.stamp.nanosec) * 1.0e-9
-        )
-
-        self._pose_store.update(
-            {
-                'latitude': latitude,
-                'longitude': longitude,
-                'altitude': float(msg.pose.point.altitude),
-                'has_altitude': bool(msg.pose.point.has_altitude),
-                'heading_deg': heading_deg,
-                'has_heading': has_heading,
-                'status_text': str(msg.status_text),
-                'fix_quality': int(msg.fix_quality),
-                'fusion_status': int(msg.fusion_status),
-                'source': int(msg.source),
-                'stamp': stamp_sec,
-                'frame_id': str(msg.header.frame_id),
-                'child_frame_id': str(msg.pose.child_frame_id),
-            }
-        )
+    def _on_active_target_llh(self, msg: ActiveTargetLlh) -> None:
+        """active target LLH受信時の処理."""
+        active_target = _active_target_to_dict(msg)
+        if active_target is None:
+            self.get_logger().warn(
+                'Ignored invalid latitude/longitude in active_target_llh message.'
+            )
+            return
+        self._pose_store.update_active_target(active_target)
 
     def _serve_http(self) -> None:
         """OpenStreetMapビューア用HTTPサーバを起動する."""
@@ -190,6 +365,10 @@ class LlhOsmViewerNode(Node):
 
                 if self.path.startswith('/pose'):
                     self._send_pose()
+                    return
+
+                if self.path.startswith('/state'):
+                    self._send_state()
                     return
 
                 self.send_response(404)
@@ -222,6 +401,23 @@ class LlhOsmViewerNode(Node):
                 """最新姿勢をJSONで返す."""
                 body = json.dumps(
                     {'pose': node._pose_store.get()},
+                    ensure_ascii=False,
+                ).encode('utf-8')
+
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.send_header('Content-Length', str(len(body)))
+                self.send_header('Cache-Control', 'no-store')
+                self.end_headers()
+                self.wfile.write(body)
+
+            def _send_state(self) -> None:
+                """最新ビューア状態をJSONで返す."""
+                body = json.dumps(
+                    node._pose_store.get_state(
+                        node._stale_timeout_s,
+                        node._lost_timeout_s,
+                    ),
                     ensure_ascii=False,
                 ).encode('utf-8')
 
@@ -300,7 +496,7 @@ def _make_html(
       z-index: 1000;
       left: 12px;
       bottom: 12px;
-      min-width: 300px;
+      min-width: 330px;
       padding: 10px 12px;
       background: rgba(255, 255, 255, 0.92);
       border-radius: 8px;
@@ -334,17 +530,14 @@ const statusBox = document.getElementById('status');
 
 let triangleLayer = null;
 let centerMarker = null;
+let routeLine = null;
+let routeMarkers = [];
+let activeTargetMarker = null;
+let latestRouteKey = '';
+let latestTargetKey = '';
 let firstPoseReceived = false;
 let latestPose = null;
 
-/**
- * heading_degを地図上の単位ベクトルに変換する。
- *
- * Leafletのピクセル座標は x:右向き, y:下向き。
- * heading_degは真北基準・時計回りなので、
- *   0deg: 画面上方向
- *  90deg: 画面右方向
- */
 function headingToPixelUnit(headingDeg) {{
   const rad = headingDeg * Math.PI / 180.0;
   return {{
@@ -353,15 +546,6 @@ function headingToPixelUnit(headingDeg) {{
   }};
 }}
 
-/**
- * 底辺:高さ = 1:2 の二等辺三角形を作る。
- *
- * heightPx = 頂角から底辺中央までの長さ
- * basePx = heightPx / 2
- *
- * 頂角 -> 底辺中央の向きが heading_deg。
- * つまり、三角形の先端が進行方向を向く。
- */
 function makeTriangleLatLngs(lat, lon, headingDeg) {{
   const center = L.latLng(lat, lon);
   const centerPt = map.latLngToLayerPoint(center);
@@ -376,8 +560,6 @@ function makeTriangleLatLngs(lat, lon, headingDeg) {{
     y: forward.x
   }};
 
-  // 現在位置を三角形の重心付近に置く。
-  // 頂点A=(+2/3 h), 底辺B/C=(-1/3 h) とすれば重心が中心になる。
   const apex = L.point(
     centerPt.x + forward.x * (heightPx * 2.0 / 3.0),
     centerPt.y + forward.y * (heightPx * 2.0 / 3.0)
@@ -445,7 +627,68 @@ function redrawPose() {{
   }}
 }}
 
-function updateStatus(pose) {{
+function updateRoute(route) {{
+  routeMarkers.forEach(marker => map.removeLayer(marker));
+  routeMarkers = [];
+
+  if (routeLine !== null) {{
+    map.removeLayer(routeLine);
+    routeLine = null;
+  }}
+
+  if (route === null || !Array.isArray(route.waypoints) || route.waypoints.length === 0) {{
+    return;
+  }}
+
+  const latLngs = route.waypoints.map(wp => [wp.latitude, wp.longitude]);
+  routeLine = L.polyline(latLngs, {{
+    color: '#2563eb',
+    weight: 4,
+    opacity: 0.8
+  }}).addTo(map);
+
+  for (const wp of route.waypoints) {{
+    const radius = wp.signal_stop || wp.line_stop ? 5 : 3;
+    const marker = L.circleMarker([wp.latitude, wp.longitude], {{
+      radius,
+      color: wp.segment_is_fixed ? '#1d4ed8' : '#7c3aed',
+      weight: 1,
+      fillColor: '#ffffff',
+      fillOpacity: 0.85
+    }}).bindTooltip(`${{wp.index}} ${{wp.label || ''}}`);
+    marker.addTo(map);
+    routeMarkers.push(marker);
+  }}
+}}
+
+function updateActiveTarget(target) {{
+  if (activeTargetMarker !== null) {{
+    map.removeLayer(activeTargetMarker);
+    activeTargetMarker = null;
+  }}
+
+  if (target === null) {{
+    return;
+  }}
+
+  activeTargetMarker = L.circleMarker([target.latitude, target.longitude], {{
+    radius: 8,
+    color: '#f97316',
+    weight: 3,
+    fillColor: '#fef3c7',
+    fillOpacity: 0.9
+  }}).bindTooltip(
+    `target ${{target.target_index}} ${{target.target_label || ''}}`
+  ).addTo(map);
+}}
+
+function updateStatus(state) {{
+  const pose = state.pose;
+  if (pose === null) {{
+    statusBox.innerHTML = '<b>/localization/pose_llh</b><br>status: NO_DATA';
+    return;
+  }}
+
   const headingText = pose.has_heading
     ? `${{pose.heading_deg.toFixed(1)}} deg`
     : 'N/A';
@@ -454,40 +697,59 @@ function updateStatus(pose) {{
     ? `${{pose.altitude.toFixed(2)}} m`
     : 'N/A';
 
+  const ageText = Number.isFinite(pose.age_s)
+    ? `${{pose.age_s.toFixed(1)}} s`
+    : 'N/A';
+
+  const route = state.route;
+  const routeText = route !== null
+    ? `${{route.route_id || ''}} v${{route.version}} ${{route.waypoints.length}} pts`
+    : 'N/A';
+
+  const target = state.active_target;
+  const targetText = target !== null
+    ? `${{target.target_index}} ${{target.target_label || ''}} ` +
+      `(${{target.distance_m.toFixed(1)}} m)`
+    : 'N/A';
+
   statusBox.innerHTML =
     `<b>/localization/pose_llh</b><br>` +
+    `pose status: ${{state.pose_status}} age: ${{ageText}}<br>` +
     `lat: ${{pose.latitude.toFixed(8)}}<br>` +
     `lon: ${{pose.longitude.toFixed(8)}}<br>` +
     `alt: ${{altitudeText}}<br>` +
     `heading: ${{headingText}}<br>` +
     `status: ${{pose.status_text || ''}}<br>` +
     `source: ${{pose.source}}, fix: ${{pose.fix_quality}}, fusion: ${{pose.fusion_status}}<br>` +
+    `route: ${{routeText}}<br>` +
+    `target: ${{targetText}}<br>` +
     `frame: ${{pose.frame_id || ''}} / ${{pose.child_frame_id || ''}}`;
 }}
 
-async function pollPose() {{
+async function pollState() {{
   try {{
-    const response = await fetch('/pose', {{ cache: 'no-store' }});
-    const data = await response.json();
+    const response = await fetch('/state', {{ cache: 'no-store' }});
+    const state = await response.json();
 
-    if (data.pose !== null) {{
-      latestPose = data.pose;
+    if (state.pose !== null) {{
+      latestPose = state.pose;
       redrawPose();
-      updateStatus(data.pose);
     }}
+    updateRoute(state.route);
+    updateActiveTarget(state.active_target);
+    updateStatus(state);
   }} catch (error) {{
-    statusBox.textContent = `Failed to fetch pose: ${{error}}`;
+    statusBox.textContent = `Failed to fetch state: ${{error}}`;
   }}
 }}
 
-setInterval(pollPose, CONFIG.pollIntervalMs);
+setInterval(pollState, CONFIG.pollIntervalMs);
 
-// ズームやパンでピクセル座標系が変わるため、三角形を再計算する。
 map.on('zoomend moveend', () => {{
   redrawPose();
 }});
 
-pollPose();
+pollState();
 </script>
 </body>
 </html>

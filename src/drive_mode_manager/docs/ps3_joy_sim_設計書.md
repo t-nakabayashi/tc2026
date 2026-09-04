@@ -157,7 +157,7 @@ colcon build --symlink-install --packages-select drive_mode_manager
 colcon build --packages-select drive_mode_manager
 ```
 
-ROS 2 実行確認では、`AGENTS.local.md` に従い、`ypspur_ros2` や実機 driver は起動しない。GUI 目視確認は DISPLAY が利用できるローカル環境でのみ行う。
+ROS 2 実行確認では、`ros2-local-run` スキルに従い、`ypspur_ros2` や実機 driver は起動しない。GUI 目視確認は DISPLAY が利用できるローカル環境でのみ行う。
 
 ## 15. 互換性・移行・影響範囲
 

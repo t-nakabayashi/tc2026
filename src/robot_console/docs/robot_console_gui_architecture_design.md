@@ -6,6 +6,8 @@
 
 対象は `robot_console` パッケージの正式GUI実装である。既存の `tkinter` GUIは移行期間中の別UIとして残さず、PyQt5 GUIへ完全移行する。完全移行後は `robot_console` の通常entry point、README、launch、評価ツール、設計書の参照先をPyQt5版に統一する。
 
+**実装状態:** 本書が定義する `ConsoleCore`、PyQt5 UI、HTML UIは実装済みであり、正式entry pointは PyQt5 版（`robot_console_qt`）と HTML遠隔観測UI（`robot_console_web`）である。旧 `tkinter` 版（`robot_console`）は当面コードを残すが正式UIとしては扱わず、`robot_console_詳細設計書.md` は旧UIの記録として参照する。
+
 画面配置や業務フロー上の操作仕様は `robot_console_gui_screen_function_design.md` を正とする。本書では、画面を実現するための実装境界、データモデル、将来のLLHベース自己位置・経路への移行前提を定義する。
 
 ## 2. 背景・要求・スコープ
@@ -165,6 +167,29 @@ route、waypoint、active targetも同様に、現行のmap/ENU/PoseStamped前�
 - 将来のLLH route/target topicをroute/target Viewへ変換する。
 - UIに座標変換規約を持たせず、地図描画に必要なoverlay情報を生成する。
 
+### 6.3.1 ENU⇔LLH変換の集約先
+
+地図表示（PyQt5 `MapView` / HTML観測UI）は緯度経度を必要とするが、ENU⇔LLH変換は
+`robot_console` では行わない。変換は `geo_pose_converter`（`route_geo_projector_node`）へ
+集約し、`robot_console` は変換済みのLLH topicを購読するだけとする。
+
+| 用途 | 購読するtopic | 配信元 |
+| --- | --- | --- |
+| 自己位置 | `/localization/pose_llh` | `geo_pose_converter` |
+| 目標waypoint | `/route/active_target_llh` | `geo_pose_converter` |
+| route waypoint列 | `/active_route` の `waypoints[].geo_pose` | `route_planner`（route file由来） |
+
+この方針の根拠は以下である。
+
+- `tc_route_msgs/ActiveTargetLlh` は「GUI・HTML UI・ログ向け」と定義されており、GUIがLLHを
+  受け取る前提で設計されている（制御用のENU目標は `/active_target` のまま維持する）。
+- 投影パラメータの解釈（原点、`map_yaw_offset_rad`、datum）を複数パッケージへ分散させると、
+  投影設定の変更時に不整合が生じる。
+
+したがって地図表示を行う構成では `geo_pose_converter` profileの起動が前提となる。同profileは
+業務モードプリセット（自律走行系）へ含める。GNSS実機を伴わない構成では
+`enable_geo_pose_converter:=false` とし、ENU→LLH変換を行う `route_geo_projector_node` のみ起動する。
+
 ### 6.4 移行時の表示方針
 
 - 現行sourceのみの場合、画面には `Localization source: pose_enu` と表示する。
@@ -196,6 +221,7 @@ route、waypoint、active targetも同様に、現行のmap/ENU/PoseStamped前�
 | `/sensor_viewer` | `sensor_msgs/msg/Image` | 現行 | 障害物/センサビュー表示 |
 | `/perception/road_blockage/decision_image` | `sensor_msgs/msg/Image` | 現行 | 道路封鎖判定画像表示 |
 | `/perception/traffic_signal/decision_image` | `sensor_msgs/msg/Image` | 現行 | 信号認識画像表示 |
+| `/route/active_target_llh` | `tc_route_msgs/msg/ActiveTargetLlh` | 現行 | 地図表示用の目標LLH、目標距離・bearing |
 | `/manual_start` | `std_msgs/msg/Bool` | 現行 | 手動開始状態、送信結果確認 |
 | `/sig_recog` | `std_msgs/msg/Int32` | 現行 | 信号GO/STOP状態、送信結果確認 |
 | `/road_blocked` | `std_msgs/msg/Bool` | 現行 | 道路封鎖状態、入力元表示 |
@@ -302,6 +328,27 @@ profiles:
 
 profile追加時に必要なUI変更は原則不要とし、カテゴリ別カード、引数入力欄、ログ欄、health表示はprofile定義から自動生成する。
 
+profile定義は、実運用launchに加えて以下の代替launchを保持できる。
+
+| フィールド | 用途 |
+| --- | --- |
+| `alternate_launch_file` | 同一profile内で切り替え可能な別実装launch（例: `road_blockage_detector`のPyTorch版YOLO） |
+| `simulator_package` / `simulator_launch_file` | 実センサ・実機基盤（GPS、ypspur、Gazebo）を使わずに疑似データで単体確認するための代替launch |
+
+`simulator_launch_file`を持つprofileは、起動・設定タブのノード設定編集パネルに「Simulator代替を使用」トグルを持つ。トグルON時は`launch_file`の代わりに`simulator_package`/`simulator_launch_file`を起動する。この仕組みは、実機・Gazeboのどちらも使わない机上確認（10章参照）を成立させるために必須である。
+
+```yaml
+  - profile_id: robot_navigator
+    category: drive_stack
+    package: robot_navigator
+    launch_file: robot_navigator.launch.py
+    simulator_package: robot_navigator
+    simulator_launch_file: robot_simulator.launch.py
+    startup_group: desktop_check
+```
+
+`yolo_detector`は`road_blockage_detector`/`traffic_signal_recognizer`のlaunch内で直接Nodeとして起動され、単体のlaunchファイルとしては呼び出されないため、独立したprofileとしては扱わない。ただし`yolo_detector/camera_simulator_node.launch.py`は、`road_blockage_detector`・`traffic_signal_recognizer`・（将来の実カメラ導入時の）該当profileの`simulator_launch_file`として利用する。
+
 ### 9.2 起動カテゴリ
 
 | category | 用途 | 代表profile |
@@ -313,7 +360,7 @@ profile追加時に必要なUI変更は原則不要とし、カテゴリ別カ�
 | `drive_stack` | 走行制御・mux | `drive_mode_manager`, `robot_navigator` |
 | `obstacle_stack` | 障害物監視 | `obstacle_monitor` |
 | `perception_stack` | 認識・判定 | `road_blockage_detector`, `traffic_signal_recognizer` |
-| `visualization` | RViz等 | `robot_console_rviz` |
+| `visualization` | RViz、経路・目標のMarker表示 | `robot_console_rviz`, `route_markers`, `target_marker` |
 
 ### 9.3 既定profile
 
@@ -326,10 +373,13 @@ profile追加時に必要なUI変更は原則不要とし、カテゴリ別カ�
 | `route_manager` | `route_manager` | `route_manager.launch.py` | `param_file`, `start_label`, `goal_label`, `checkpoint_labels` |
 | `route_follower` | `route_follower` | `route_follower.launch.py` | `param_file` |
 | `drive_mode_manager` | `drive_mode_manager` | `drive_mode_manager.launch.py` | `start_gui`, `joy_input` |
-| `robot_navigator` | `robot_navigator` | `robot_navigator.launch.py` | `param_file`, `cmd_vel_topic`, `odom_topic` |
-| `obstacle_monitor` | `obstacle_monitor` | `obstacle_monitor.launch.py` | `param_file` |
-| `road_blockage_detector` | `road_blockage_detector` | `road_blockage_perception.launch.py` | `detector_param_file`, alternate launch |
-| `traffic_signal_recognizer` | `traffic_signal_recognizer` | `traffic_signal_perception.launch.py` | `recognizer_param_file` |
+| `robot_navigator` | `robot_navigator` | `robot_navigator.launch.py`（simulator代替: `robot_simulator.launch.py`） | `param_file`, `cmd_vel_topic`, `odom_topic` |
+| `obstacle_monitor` | `obstacle_monitor` | `obstacle_monitor.launch.py`（simulator代替: `laser_scan_simulator.launch.py`） | `param_file` |
+| `road_blockage_detector` | `road_blockage_detector` | `road_blockage_perception.launch.py`（alternate launch: `road_blockage_perception_yolo.launch.py`、simulator代替: `yolo_detector/camera_simulator_node.launch.py`） | `detector_param_file` |
+| `traffic_signal_recognizer` | `traffic_signal_recognizer` | `traffic_signal_perception.launch.py`（simulator代替: `yolo_detector/camera_simulator_node.launch.py`） | `recognizer_param_file` |
+| `route_markers` | `route_manager` | `active_route_marker.launch.py` | `active_route_topic`, `marker_topic` |
+| `target_marker` | `route_follower` | `active_target_marker.launch.py` | `active_target_topic`, `marker_topic` |
+| `robot_console_rviz` | `robot_console` | `robot_console_rviz.launch.py` | なし（固定config `rviz/robot_console_view.rviz`） |
 
 `rtk_gps_um982_msgs` はmsg定義パッケージであり、起動対象profileには含めない。
 
@@ -375,6 +425,23 @@ robot_navigator
 obstacle_route_sim
 drive_mode_manager
 ```
+
+机上確認（実センサ・Gazebo無し）の基本グループ:
+
+```text
+route_planner
+route_manager
+route_follower
+drive_mode_manager (joy_input=ps3_joy_sim)
+robot_navigator (simulator代替使用)
+obstacle_monitor (simulator代替使用)
+road_blockage_detector (simulator代替使用)
+traffic_signal_recognizer (simulator代替使用)
+```
+
+机上確認は、`ypspur_ros2`・`rtk_gps_um982`・`obstacle_route_sim`のいずれも起動せず、各profileのsimulator代替launchのみで自己位置・LaserScan・カメラ画像を疑似生成して確認する環境である。
+
+上記いずれのグループにも`robot_console_rviz`、`route_markers`、`target_marker`は含めていない。可視化系profileは業務モードによらず任意追加可能なオプション扱いとし、必要な業務でユーザーが個別に起動候補ツリーから追加する。
 
 ## 11. パラメータ・設定仕様
 
@@ -423,12 +490,18 @@ drive_mode_manager
 
 ## 13. QoS・並行性・タイミング設計
 
+- 購読QoSは配信側ノードのQoSに合わせる。QoS非互換の購読は接続自体が成立せず無言で受信ゼロになるため、以下を購読側の既定とする。
+  - `/active_route`: route_managerがTransient Local（ラッチ）で配信するため、`RELIABLE` / `TRANSIENT_LOCAL` / `depth=1` で購読する（VOLATILE購読では起動順によって初回Routeを取り逃す）。
+  - `/obstacle_avoidance_hint`: obstacle_monitorがBEST_EFFORTで配信するため、`BEST_EFFORT` で購読する。
+  - 画像topic（`/sensor_viewer`、各 `decision_image`）: 配信側のreliabilityがノードごとに異なるため、双方と互換な `BEST_EFFORT` で一律購読する（表示用途であり取りこぼしを許容する）。
+  - 上記以外のストリーム系topicは `RELIABLE` / `VOLATILE` / `depth=10` を既定とする。
 - ROS callbackはCoreのスレッド安全APIへ状態を投入し、GUI部品を直接更新しない。
 - PyQt5 GUIはQt main thread上でのみwidgetを更新する。
 - Snapshot生成時はStateStoreを短時間lockし、UI側では読み取り専用データとして扱う。
 - 画像はImageStoreに保持し、Snapshotには参照情報だけを含める。
 - GPS/GNSS topicは受信周期が10Hz程度のため、GUI表示は5Hz以下へ間引いてよい。
 - 将来の `pose_llh` と現行 `/localization/pose_enu` を同時購読する期間は、sourceごとの鮮度を別々に保持する。
+- `odom` は実機（`ypspur_ros2` 既定: `/odom`）とシミュレーション評価構成（`node_launch_profiles.yaml` の `robot_navigator` プロファイル既定: `/ypspur_ros/odom`）とで既定トピック名が異なるため、`launch/robot_console.launch.py` は `odom_topic` launch引数でremapできるようにする（`ros2 run` 経由で起動する場合は `--ros-args -r odom:=<実際のtopic>` で同様に上書きできる）。`drive_mode_status` / `cmd_vel` / `cmd_vel/autonomous` も同様にlaunch引数でremapできるようにし、他の購読topicと同じ扱いとする。
 
 ## 14. エラー処理・ログ・診断
 
@@ -482,7 +555,6 @@ HTML UIには操作APIを提供しない。自己位置は現行 `/localization/
 
 - `localization_fusion/pose_llh` の正確なtopic名と型は、`localization_fusion` 実装時に確定する。
 - LLHベースroute/waypoint/active_targetのtopic名と型は、route系interface拡張時に確定する。
-- OSM表示でGPS LLHとlocal ENUをどの共通変換機能に集約するかは、地図・自己位置系の実装時に確定する。
 - `gpsd`、`chrony` の状態をGUIへ表示するかは、OS管理方法が固まった後に別profileまたはhealth checkとして検討する。
 - 複数GPS受信機を扱う場合は、GPS profileを複数インスタンス化できるよう `instance_id` を追加する。
 
@@ -490,5 +562,6 @@ HTML UIには操作APIを提供しない。自己位置は現行 `/localization/
 
 | 日付 | 版 | 変更概要 |
 | --- | --- | --- |
+| 2026-08-29 | 0.3 | simulator代替launch（`robot_simulator` / `laser_scan_simulator` / `camera_simulator_node`）と可視化profile（`route_markers` / `target_marker`）をprofile定義・起動グループへ追加。机上確認（実センサ・Gazebo無し）の起動グループを新設。 |
 | 2026-05-28 | 0.2 | tkinterを別UIとして残さない完全移行方針、`localization_fusion/pose_llh` とLLH route/targetへの将来移行前提を反映。 |
 | 2026-05-27 | 0.1 | UI改修向けアーキテクチャ、GPS/GNSS起動管理、profile定義駆動方針を初版として作成。 |

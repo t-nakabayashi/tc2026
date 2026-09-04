@@ -10,6 +10,14 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+try:
+    import PIL  # noqa: F401
+    import PIL.Image  # noqa: F401
+    import PIL.ImageDraw  # noqa: F401
+    import PIL.ImageFont  # noqa: F401
+except ImportError:
+    pass
+
 
 if 'PIL' not in sys.modules:
     pil_root = types.ModuleType('PIL')

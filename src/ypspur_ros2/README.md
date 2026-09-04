@@ -10,7 +10,7 @@
 | `cmd_vel` | `geometry_msgs/msg/Twist` | sub | `YPSpur_vel(linear.x, angular.z)` を呼ぶ。既定では `drive_mode_manager` が publish する `/cmd_vel` と接続する |
 | `odom` | `nav_msgs/msg/Odometry` | pub | `YPSpur_get_pos` / `YPSpur_get_vel` を 50Hz で配信 |
 
-`ypspur_node` は相対 topic `cmd_vel` を購読し、相対 topic `odom` を publish します。namespace なしで `drive_mode_manager.launch.py` と同時起動した場合、`drive_cmd_mux_node` の最終出力 `/cmd_vel` がそのまま `ypspur_node` に入ります。topic 名を変える場合は launch 引数 `cmd_vel_topic` と `odom_topic` を指定します。
+`ypspur_node` は相対 topic `cmd_vel` を購読し、相対 topic `odom` を publish します。launch の既定では `odom` を `/ypspur_ros/odom` へ remap します（`robot_navigator`、`obstacle_route_sim` の Gazebo bridge、`robot_simulator` がいずれもこの topic 名を前提とするため）。namespace なしで `drive_mode_manager.launch.py` と同時起動した場合、`drive_cmd_mux_node` の最終出力 `/cmd_vel` がそのまま `ypspur_node` に入ります。topic 名を変える場合は launch 引数 `cmd_vel_topic` と `odom_topic` を指定します。
 
 ## Issue #245 への対処
 
@@ -80,7 +80,7 @@ ros2 launch ypspur_ros2 ypspur_ros2.launch.py \
 `drive_mode_manager` と組み合わせる場合、既定では `drive_mode_manager` の `/cmd_vel` と `ypspur_node` の `cmd_vel` が接続されます。明示する場合は以下のようにします。
 
 ```bash
-ros2 launch ypspur_ros2 ypspur_ros2.launch.py cmd_vel_topic:=/cmd_vel odom_topic:=/odom
+ros2 launch ypspur_ros2 ypspur_ros2.launch.py cmd_vel_topic:=/cmd_vel odom_topic:=/ypspur_ros/odom
 ```
 
 ### 3. 動作確認
@@ -90,7 +90,7 @@ ros2 launch ypspur_ros2 ypspur_ros2.launch.py cmd_vel_topic:=/cmd_vel odom_topic
 ros2 topic pub /cmd_vel geometry_msgs/Twist "{linear: {x: 0.1}, angular: {z: 0.0}}" -r 10
 
 # odometry を監視
-ros2 topic echo /odom
+ros2 topic echo /ypspur_ros/odom
 ```
 
 cmd_vel が `cmd_vel_timeout_s` (既定 0.5 秒) 入らないとロボットは自動停止します。
@@ -110,7 +110,7 @@ cmd_vel が `cmd_vel_timeout_s` (既定 0.5 秒) 入らないとロボットは�
 | `velocity_max.linear`   | double  | `1.0`       | 受信 linear.x のクリップ閾値 (m/s, ±対称)           |
 | `velocity_max.angular`  | double  | `1.5`       | 受信 angular.z のクリップ閾値 (rad/s, ±対称)        |
 | launch `cmd_vel_topic` | string | `cmd_vel` | `cmd_vel` の remap 先。`drive_mode_manager` と接続する場合は既定または `/cmd_vel` |
-| launch `odom_topic` | string | `odom` | `odom` の remap 先 |
+| launch `odom_topic` | string | `/ypspur_ros/odom` | `odom` の remap 先。robot_navigator 等が前提とする既定値 |
 | launch `start_coordinator` | bool | `false` | true の場合、launch から `ypspur-coordinator` を同時起動 |
 | launch `coordinator_device` | string | `/dev/ttyACM0` | `ypspur-coordinator -d` に渡す device path |
 | launch `coordinator_param` | string | `""` | `ypspur-coordinator -p` に渡す robot parameter file path |
@@ -129,7 +129,7 @@ ypspur-coordinator が起動していないか、別ユーザで起動してい�
 - パッチが適用されていない場合 (本パッケージ経由でビルドしていない場合) は Issue #245 の症状
   (接続拒否・異音・負荷で coordinator が落ちる) が出る
 
-### `/odom` が出ているのに位置が動かない
+### odom が出ているのに位置が動かない
 
 - coordinator のパラメータファイルでホイール直径やトレッド幅が合っていない
 - `coordinate_system` がロボットの初期化方法と合っていない

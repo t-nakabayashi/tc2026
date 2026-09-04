@@ -12,15 +12,16 @@ import rclpy
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
-from tc_route_msgs.msg import ActiveTargetLlh, FollowerState, Route, Waypoint
 from std_msgs.msg import Header
 from tc_geo_msgs.msg import GeoPoseWithQuality
+from tc_route_msgs.msg import ActiveTargetLlh, FollowerState, Route, Waypoint
 
 from geo_pose_converter.geo_core import ProjectionConfig
 from geo_pose_converter.message_utils import (
     make_active_target_llh,
     make_geo_pose_quality,
     pose_to_llh_pose,
+    projection_from_msg,
 )
 
 
@@ -42,7 +43,7 @@ class RouteGeoProjectorNode(Node):
         self.declare_parameter('pose_llh_topic', '/localization/pose_llh')
         self.declare_parameter('pose_child_frame_id', 'base_link')
 
-        self.projection = ProjectionConfig(
+        self.configured_projection = ProjectionConfig(
             origin_latitude=float(self.get_parameter('origin_latitude').value),
             origin_longitude=float(self.get_parameter('origin_longitude').value),
             origin_altitude=float(self.get_parameter('origin_altitude').value),
@@ -52,6 +53,10 @@ class RouteGeoProjectorNode(Node):
             map_frame_id=str(self.get_parameter('map_frame_id').value),
             earth_frame_id=str(self.get_parameter('earth_frame_id').value),
         )
+        self.projection = self.configured_projection
+        self._projection_mismatch_logged = False
+        self._pose_frame_mismatch_logged = False
+        self._target_frame_mismatch_logged = False
 
         qos_stream = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
@@ -99,19 +104,88 @@ class RouteGeoProjectorNode(Node):
             f'pose_enu_topic={self.pose_enu_topic}, pose_llh_topic={self.pose_llh_topic}'
         )
 
+    def _projection_diff_messages(
+        self,
+        expected: ProjectionConfig,
+        actual: ProjectionConfig,
+    ) -> list[str]:
+        """projection設定差分をログ用文字列として返す."""
+
+        diffs: list[str] = []
+
+        def _check_str(name: str, left: str, right: str) -> None:
+            if str(left) != str(right):
+                diffs.append(f"{name}: configured={left}, route={right}")
+
+        def _check_float(name: str, left: float, right: float, tolerance: float) -> None:
+            if abs(float(left) - float(right)) > tolerance:
+                diffs.append(f"{name}: configured={left}, route={right}")
+
+        _check_str('projection_id', expected.projection_id, actual.projection_id)
+        _check_str('datum', expected.datum, actual.datum)
+        _check_str('map_frame_id', expected.map_frame_id, actual.map_frame_id)
+        _check_str('earth_frame_id', expected.earth_frame_id, actual.earth_frame_id)
+        _check_float(
+            'origin_latitude',
+            expected.origin_latitude,
+            actual.origin_latitude,
+            1.0e-9,
+        )
+        _check_float(
+            'origin_longitude',
+            expected.origin_longitude,
+            actual.origin_longitude,
+            1.0e-9,
+        )
+        _check_float(
+            'origin_altitude',
+            expected.origin_altitude,
+            actual.origin_altitude,
+            1.0e-3,
+        )
+        _check_float(
+            'map_yaw_offset_rad',
+            expected.map_yaw_offset_rad,
+            actual.map_yaw_offset_rad,
+            1.0e-9,
+        )
+        return diffs
+
+    def _warn_frame_mismatch(self, kind: str, frame_id: str) -> None:
+        """入力poseのframe_idがprojectionのmap frameと異なる場合に警告する."""
+
+        expected = self.projection.map_frame_id
+        if not frame_id or frame_id == expected:
+            return
+        if kind == 'pose_enu' and self._pose_frame_mismatch_logged:
+            return
+        if kind == 'active_target' and self._target_frame_mismatch_logged:
+            return
+        self.get_logger().warn(
+            f'{kind} frame_id mismatch: '
+            f'frame_id={frame_id}, projection.map_frame_id={expected}'
+        )
+        if kind == 'pose_enu':
+            self._pose_frame_mismatch_logged = True
+        elif kind == 'active_target':
+            self._target_frame_mismatch_logged = True
+
     def _on_route(self, msg: Route) -> None:
         self.active_route = copy.deepcopy(msg)
         if msg.projection.projection_id:
-            self.projection = ProjectionConfig(
-                origin_latitude=float(msg.projection.origin_latitude),
-                origin_longitude=float(msg.projection.origin_longitude),
-                origin_altitude=float(msg.projection.origin_altitude),
-                map_yaw_offset_rad=float(msg.projection.map_yaw_offset_rad),
-                projection_id=str(msg.projection.projection_id),
-                datum=str(msg.projection.datum) or 'WGS84',
-                map_frame_id=str(msg.projection.map_frame_id) or 'map',
-                earth_frame_id=str(msg.projection.earth_frame_id) or 'earth',
+            route_projection = projection_from_msg(msg.projection)
+            diffs = self._projection_diff_messages(
+                self.configured_projection,
+                route_projection,
             )
+            if diffs and not self._projection_mismatch_logged:
+                self.get_logger().error(
+                    'Route.projection differs from route_geo_projector parameters. '
+                    'Using Route.projection for route display conversion. '
+                    + '; '.join(diffs)
+                )
+                self._projection_mismatch_logged = True
+            self.projection = route_projection
 
     def _on_follower_state(self, msg: FollowerState) -> None:
         self.follower_state = copy.deepcopy(msg)
@@ -119,6 +193,7 @@ class RouteGeoProjectorNode(Node):
 
     def _on_pose_enu(self, msg: PoseWithCovarianceStamped) -> None:
         self.pose_enu = copy.deepcopy(msg)
+        self._warn_frame_mismatch('pose_enu', msg.header.frame_id)
         header = Header()
         header.stamp = msg.header.stamp
         header.frame_id = self.projection.earth_frame_id
@@ -141,6 +216,7 @@ class RouteGeoProjectorNode(Node):
 
     def _on_target(self, msg: PoseStamped) -> None:
         self.active_target = copy.deepcopy(msg)
+        self._warn_frame_mismatch('active_target', msg.header.frame_id)
         self._publish_if_ready()
 
     def _find_route_waypoint(self, index: int, label: str) -> Optional[Waypoint]:

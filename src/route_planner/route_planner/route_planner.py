@@ -36,6 +36,12 @@ from tc_route_msgs.msg import Route, Waypoint
 from tc_geo_msgs.msg import MapProjection
 from tc_route_msgs.srv import GetRoute, UpdateRoute
 
+from geo_pose_converter.geo_core import (
+    ProjectionConfig,
+    enu_to_llh_on_ground,
+    load_projection_config_from_yaml,
+)
+
 # 可変ルート探索（外部モジュール）
 _THIS_DIR = Path(__file__).resolve().parent
 if str(_THIS_DIR) not in sys.path:
@@ -353,14 +359,7 @@ class RoutePlannerNode(Node):
         self.declare_parameter("map_image_path", None)
         self.declare_parameter("map_worldfile_path", None)
         self.declare_parameter("route_id", "default_route")
-        self.declare_parameter("projection_id", "tokyo_station")
-        self.declare_parameter("datum", "WGS84")
-        self.declare_parameter("map_frame_id", "map")
-        self.declare_parameter("earth_frame_id", "earth")
-        self.declare_parameter("origin_latitude", 35.681382)
-        self.declare_parameter("origin_longitude", 139.766084)
-        self.declare_parameter("origin_altitude", 3.86)
-        self.declare_parameter("map_yaw_offset_rad", 0.0)
+        self.declare_parameter("projection_config_path", "params/default.yaml")
 
         try:
             pkg_share = get_package_share_directory("route_planner")
@@ -368,19 +367,21 @@ class RoutePlannerNode(Node):
             pkg_share = None
             self.get_logger().warn("パッケージ共有ディレクトリが取得できませんでした。相対パスはそのまま扱います。")
 
+        try:
+            geo_pkg_share = get_package_share_directory("geo_pose_converter")
+        except PackageNotFoundError:
+            geo_pkg_share = None
+            self.get_logger().warn(
+                "geo_pose_converter の共有ディレクトリが取得できませんでした。"
+                "projection_config_path はそのまま扱います。"
+            )
+
         config_yaml_raw = str(self.get_parameter("config_yaml_path").value)
         csv_base_dir_raw = str(self.get_parameter("csv_base_dir").value)
         map_image_raw = self.get_parameter("map_image_path").value
         map_worldfile_raw = self.get_parameter("map_worldfile_path").value
         self.route_id = str(self.get_parameter("route_id").value)
-        self.projection_id = str(self.get_parameter("projection_id").value)
-        self.datum = str(self.get_parameter("datum").value)
-        self.map_frame_id = str(self.get_parameter("map_frame_id").value)
-        self.earth_frame_id = str(self.get_parameter("earth_frame_id").value)
-        self.origin_latitude = float(self.get_parameter("origin_latitude").value)
-        self.origin_longitude = float(self.get_parameter("origin_longitude").value)
-        self.origin_altitude = float(self.get_parameter("origin_altitude").value)
-        self.map_yaw_offset_rad = float(self.get_parameter("map_yaw_offset_rad").value)
+        projection_config_raw = str(self.get_parameter("projection_config_path").value)
         get_service_name = 'get_route'
         update_service_name = 'update_route'
 
@@ -396,6 +397,18 @@ class RoutePlannerNode(Node):
             pkg_share,
             "map_worldfile_path",
         )
+        self.projection_config_path: str = resolve_path(
+            geo_pkg_share,
+            projection_config_raw,
+        ) if projection_config_raw else ""
+        try:
+            self.projection_config: ProjectionConfig = load_projection_config_from_yaml(
+                self.projection_config_path
+            )
+        except Exception as exc:
+            self.get_logger().error(f"projection設定の読み込みに失敗しました: {exc}")
+            self.projection_config = ProjectionConfig(35.681382, 139.766084, 3.86)
+
 
         if self.map_image_path and self.map_worldfile_path:
             self.get_logger().info(f"Using map_image_path: {self.map_image_path}")
@@ -415,6 +428,15 @@ class RoutePlannerNode(Node):
             self.get_logger().info(f"Using config_yaml_path: {self.config_yaml_path}")
         if self.csv_base_dir:
             self.get_logger().info(f"Using csv_base_dir: {self.csv_base_dir}")
+        if self.projection_config_path:
+            self.get_logger().info(f"Using projection_config_path: {self.projection_config_path}")
+        self.get_logger().info(
+            "Using projection: "
+            f"{self.projection_config.projection_id} "
+            f"origin=({self.projection_config.origin_latitude}, "
+            f"{self.projection_config.origin_longitude}, "
+            f"{self.projection_config.origin_altitude})"
+        )
 
         # --- メンバ（状態） ---
         self.blocks: List[Dict[str, Any]] = []                  # YAMLのブロック原義（固定/可変）
@@ -430,6 +452,7 @@ class RoutePlannerNode(Node):
             config_yaml_path=self.config_yaml_path,
             csv_base_dir=self.csv_base_dir,
             logger=self.get_logger(),
+            projection=self.projection_config,
         )
         try:
             self.route_builder.load()
@@ -546,13 +569,11 @@ class RoutePlannerNode(Node):
             wp.has_geo_pose = True
             wp.geo_pose.header = Header()
             wp.geo_pose.header.stamp = self.get_clock().now().to_msg()
-            wp.geo_pose.header.frame_id = self.earth_frame_id
+            wp.geo_pose.header.frame_id = self.projection_config.earth_frame_id
             wp.geo_pose.child_frame_id = "route_waypoint"
             wp.geo_pose.point.latitude = float(record.latitude)
             wp.geo_pose.point.longitude = float(record.longitude)
-            wp.geo_pose.point.altitude = (
-                float(record.altitude) if record.altitude is not None else float(record.pose.position.z)
-            )
+            wp.geo_pose.point.altitude = float(record.altitude) if record.altitude is not None else 0.0
             wp.geo_pose.point.has_altitude = record.altitude is not None
 
             yaw_map = quaternion_to_yaw(wp.pose.orientation)
@@ -560,7 +581,7 @@ class RoutePlannerNode(Node):
                 heading_deg = float(record.heading_deg) % 360.0
                 yaw_enu_rad = heading_deg_to_yaw_enu_rad(heading_deg)
             else:
-                yaw_enu_rad = yaw_map + self.map_yaw_offset_rad
+                yaw_enu_rad = yaw_map + self.projection_config.map_yaw_offset_rad
                 heading_deg = yaw_enu_rad_to_heading_deg(yaw_enu_rad)
             wp.geo_pose.heading_deg = heading_deg
             wp.geo_pose.has_heading = True
@@ -568,9 +589,53 @@ class RoutePlannerNode(Node):
             wp.geo_pose.has_yaw_enu = True
             wp.geo_pose_source = Waypoint.GEO_SOURCE_ROUTE_FILE
         else:
+            self._fill_geo_pose_from_enu(wp)
+        return wp
+
+    def _fill_geo_pose_from_enu(self, wp: Waypoint) -> None:
+        """LLHを持たないwaypointのgeo_poseを、ENU poseからの逆投影で補完する。
+
+        ENU座標のみで定義されたroute（`routes/simulation` 配下など、CSVに
+        latitude/longitude列が無いもの）でも、地図表示・ログ・route編集がLLHを
+        参照できるようにする。走行制御が使う `pose`（ENU）は変更しないため、
+        追従挙動には影響しない。
+
+        水平座標の逆投影は `enu_to_llh_on_ground()` を用い、基準高度を
+        `origin_altitude` に揃える（ENU⇔LLH変換の高度規約統一。詳細は
+        `geo_pose_converter/message_utils.py` の各変換関数を参照）。
+        """
+
+        if self.projection_config is None:
             wp.has_geo_pose = False
             wp.geo_pose_source = Waypoint.GEO_SOURCE_UNKNOWN
-        return wp
+            return
+
+        point = enu_to_llh_on_ground(
+            float(wp.pose.position.x),
+            float(wp.pose.position.y),
+            self.projection_config,
+            ground_altitude=self.projection_config.origin_altitude,
+        )
+        wp.has_geo_pose = True
+        wp.geo_pose.header = Header()
+        wp.geo_pose.header.stamp = self.get_clock().now().to_msg()
+        wp.geo_pose.header.frame_id = self.projection_config.earth_frame_id
+        wp.geo_pose.child_frame_id = "route_waypoint"
+        wp.geo_pose.point.latitude = point.latitude
+        wp.geo_pose.point.longitude = point.longitude
+        wp.geo_pose.point.altitude = 0.0
+        # ENUのzは走行用2D座標として0に正規化されており高度情報を持たないため、
+        # 逆投影した高度は有効値として扱わない。
+        wp.geo_pose.point.has_altitude = False
+
+        yaw_enu_rad = quaternion_to_yaw(wp.pose.orientation) + (
+            self.projection_config.map_yaw_offset_rad
+        )
+        wp.geo_pose.heading_deg = yaw_enu_rad_to_heading_deg(yaw_enu_rad)
+        wp.geo_pose.has_heading = True
+        wp.geo_pose.yaw_enu_rad = yaw_enu_rad
+        wp.geo_pose.has_yaw_enu = True
+        wp.geo_pose_source = Waypoint.GEO_SOURCE_PROJECTED_FROM_ENU
 
     def _make_projection_msg(self) -> MapProjection:
         """Route.msgへ埋め込む地図投影メタデータを生成する。"""
@@ -578,16 +643,16 @@ class RoutePlannerNode(Node):
         projection = MapProjection()
         projection.header = Header()
         projection.header.stamp = self.get_clock().now().to_msg()
-        projection.header.frame_id = self.earth_frame_id
+        projection.header.frame_id = self.projection_config.earth_frame_id
         projection.projection_type = MapProjection.PROJECTION_LOCAL_TANGENT_PLANE
-        projection.projection_id = self.projection_id
-        projection.datum = self.datum
-        projection.map_frame_id = self.map_frame_id
-        projection.earth_frame_id = self.earth_frame_id
-        projection.origin_latitude = self.origin_latitude
-        projection.origin_longitude = self.origin_longitude
-        projection.origin_altitude = self.origin_altitude
-        projection.map_yaw_offset_rad = self.map_yaw_offset_rad
+        projection.projection_id = self.projection_config.projection_id
+        projection.datum = self.projection_config.datum
+        projection.map_frame_id = self.projection_config.map_frame_id
+        projection.earth_frame_id = self.projection_config.earth_frame_id
+        projection.origin_latitude = self.projection_config.origin_latitude
+        projection.origin_longitude = self.projection_config.origin_longitude
+        projection.origin_altitude = self.projection_config.origin_altitude
+        projection.map_yaw_offset_rad = self.projection_config.map_yaw_offset_rad
         projection.utm_zone = ""
         projection.utm_north = True
         return projection
@@ -595,12 +660,12 @@ class RoutePlannerNode(Node):
     def _apply_route_metadata(self, route: Route) -> None:
         """Route全体の識別子・座標系メタデータを設定する。"""
 
-        route.header.frame_id = self.map_frame_id
+        route.header.frame_id = self.projection_config.map_frame_id
         route.route_id = self.route_id
-        route.map_frame_id = self.map_frame_id
-        route.earth_frame_id = self.earth_frame_id
+        route.map_frame_id = self.projection_config.map_frame_id
+        route.earth_frame_id = self.projection_config.earth_frame_id
         route.projection = self._make_projection_msg()
-        route.route_image.header.frame_id = self.map_frame_id
+        route.route_image.header.frame_id = self.projection_config.map_frame_id
 
     def _refresh_segment_cache(self) -> None:
         """RouteBuilderのキャッシュからROSメッセージ形式のセグメントを再構築する。"""

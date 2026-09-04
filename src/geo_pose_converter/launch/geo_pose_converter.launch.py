@@ -66,6 +66,26 @@ def generate_launch_description():
         default_value='/geo/map_projection',
         description='geo_pose_converter_node が publish する map projection topic',
     )
+    enable_llh_osm_viewer_arg = DeclareLaunchArgument(
+        'enable_llh_osm_viewer',
+        default_value='false',
+        description='LLH自己位置とrouteをOSM上に表示する llh_osm_viewer_node を起動する',
+    )
+    llh_osm_viewer_host_arg = DeclareLaunchArgument(
+        'llh_osm_viewer_host',
+        default_value='127.0.0.1',
+        description='llh_osm_viewer_node のHTTP listen host',
+    )
+    llh_osm_viewer_port_arg = DeclareLaunchArgument(
+        'llh_osm_viewer_port',
+        default_value='8765',
+        description='llh_osm_viewer_node のHTTP listen port',
+    )
+    llh_osm_viewer_open_browser_arg = DeclareLaunchArgument(
+        'llh_osm_viewer_open_browser',
+        default_value='true',
+        description='llh_osm_viewer_node 起動時にブラウザを開くか',
+    )
 
     config = LaunchConfiguration('config')
     enable_converter = LaunchConfiguration('enable_geo_pose_converter')
@@ -75,6 +95,10 @@ def generate_launch_description():
     pose_llh_topic = LaunchConfiguration('pose_llh_topic')
     active_target_llh_topic = LaunchConfiguration('active_target_llh_topic')
     map_projection_topic = LaunchConfiguration('map_projection_topic')
+    enable_llh_osm_viewer = LaunchConfiguration('enable_llh_osm_viewer')
+    llh_osm_viewer_host = LaunchConfiguration('llh_osm_viewer_host')
+    llh_osm_viewer_port = LaunchConfiguration('llh_osm_viewer_port')
+    llh_osm_viewer_open_browser = LaunchConfiguration('llh_osm_viewer_open_browser')
 
     return LaunchDescription([
         config_arg,
@@ -85,6 +109,10 @@ def generate_launch_description():
         pose_llh_topic_arg,
         active_target_llh_topic_arg,
         map_projection_topic_arg,
+        enable_llh_osm_viewer_arg,
+        llh_osm_viewer_host_arg,
+        llh_osm_viewer_port_arg,
+        llh_osm_viewer_open_browser_arg,
         Node(
             package='geo_pose_converter',
             executable='geo_pose_converter_node',
@@ -119,5 +147,22 @@ def generate_launch_description():
                 ('follower_state', '/follower_state'),
                 ('route/active_target_llh', active_target_llh_topic),
             ],
+        ),
+        Node(
+            package='geo_pose_converter',
+            executable='llh_osm_viewer_node',
+            name='llh_osm_viewer',
+            output='screen',
+            parameters=[
+                {
+                    'pose_llh_topic': pose_llh_topic,
+                    'active_route_topic': '/active_route',
+                    'active_target_llh_topic': active_target_llh_topic,
+                    'http_host': llh_osm_viewer_host,
+                    'http_port': llh_osm_viewer_port,
+                    'open_browser': llh_osm_viewer_open_browser,
+                },
+            ],
+            condition=IfCondition(enable_llh_osm_viewer),
         ),
     ])

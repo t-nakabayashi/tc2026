@@ -8,7 +8,7 @@
 - GNSS センサ系 topic を `tc_geo_msgs` と ENU pose へ変換する。
 - `/localization/pose_enu`、`/active_route`、`/active_target` を表示用 LLH topic へ投影する。
 - LLH 自己位置を OpenStreetMap 上で確認する。
-- route CSV の `latitude,longitude,altitude,heading_deg` から `x,y,z,q1,q2,q3,q4` を一括生成する。
+- route CSV の `latitude,longitude,heading_deg` をもとに、走行用2D ENU pose と表示用LLH poseを相互変換する。
 
 ## ノード
 ### `geo_pose_converter_node`
@@ -37,10 +37,12 @@ ENU topic を表示用 LLH topic へ変換します。
 | Publish | `/localization/pose_llh` | `tc_geo_msgs/msg/GeoPoseWithQuality` | GUI、HTML UI、OSM 表示用の自己位置。 |
 | Publish | `/route/active_target_llh` | `tc_route_msgs/msg/ActiveTargetLlh` | 表示用 active target。 |
 
-`Route.projection` を受信すると、その projection を使って `/localization/pose_enu` を LLH に戻します。route CSV 生成時と `Route.projection` の原点がずれると、表示位置もずれるため注意してください。
+`Route.projection` を受信すると、その projection を使って `/localization/pose_enu` を LLH に戻します。ENU pose は走行用2D座標のため、逆投影で作ったLLH高度は有効扱いせず `GeoPoint.has_altitude=false` とします。route CSV 生成時と `Route.projection` の原点がずれると、表示位置もずれるため注意してください。
 
 ### `llh_osm_viewer_node`
-`/localization/pose_llh` を購読し、ローカル HTTP サーバで OpenStreetMap ビューアを提供します。自己位置は赤い二等辺三角形で表示され、三角形の向きは `heading_deg` を表します。
+`/localization/pose_llh`、`/active_route`、`/route/active_target_llh` を購読し、ローカル HTTP サーバで OpenStreetMap ビューアを提供します。自己位置は赤い二等辺三角形で表示され、三角形の向きは `heading_deg` を表します。active route は `Waypoint.geo_pose` を持つ点だけを青い線と点で重畳し、active target は橙色の点で重畳します。
+
+このノードは `geo_pose_converter` の診断・統合確認用ビューアです。正式な `robot_console` HTML遠隔観測UIでは、運行サマリ、センサ画像、node health、読み取り専用Snapshot APIを `robot_console` 側で扱う想定です。
 
 起動例:
 
@@ -65,10 +67,18 @@ http://127.0.0.1:18765/
 curl http://127.0.0.1:18765/pose
 ```
 
+自己位置、route、active target、pose鮮度状態をまとめた viewer 状態は次で確認できます。
+
+```bash
+curl http://127.0.0.1:18765/state
+```
+
+`pose_status` は `OK`、`STALE`、`LOST`、`NO_DATA` のいずれかです。これはHTTPレスポンス生成時刻と最後に `/localization/pose_llh` を受信した壁時計時刻の差から判定します。地図上の自己位置マーカー色は通信状態で変更せず、状態表示欄でのみ示します。
+
 Leaflet と OpenStreetMap タイルは CDN/外部タイルを利用するため、地図表示にはネットワーク接続が必要です。
 
 ## launch
-`geo_pose_converter.launch.py` は `geo_pose_converter_node` と `route_geo_projector_node` を起動します。
+`geo_pose_converter.launch.py` は `geo_pose_converter_node` と `route_geo_projector_node` を起動します。`enable_llh_osm_viewer:=true` を指定すると、診断用の `llh_osm_viewer_node` も同時に起動します。
 
 ```bash
 source install/setup.bash
@@ -83,7 +93,15 @@ ros2 launch geo_pose_converter geo_pose_converter.launch.py \
   enable_geo_pose_converter:=false
 ```
 
-`llh_osm_viewer_node` は現在この launch には含めていません。統合確認時は別プロセスで起動してください。
+OSM viewer も同時に起動する例:
+
+```bash
+ros2 launch geo_pose_converter geo_pose_converter.launch.py \
+  enable_geo_pose_converter:=false \
+  enable_llh_osm_viewer:=true \
+  llh_osm_viewer_port:=18765 \
+  llh_osm_viewer_open_browser:=false
+```
 
 ## パラメータ
 `params/default.yaml` では、projection 設定を `/**` の共通パラメータとして定義しています。`geo_pose_converter_node` と `route_geo_projector_node` は同じ ENU/LLH 変換条件を使う必要があります。
@@ -98,35 +116,11 @@ ros2 launch geo_pose_converter geo_pose_converter.launch.py \
 | `origin_longitude` | `139.766084` | ENU/LLH 変換原点の経度。 |
 | `origin_altitude` | `3.86` | ENU/LLH 変換原点の高度[m]。 |
 | `map_yaw_offset_rad` | `0.0` | map x/y と ENU east/north の回転オフセット[rad]。 |
-
-## ルート CSV ENU 変換ツール
-`tools/llh_to_enu_csv.py` は、`latitude,longitude,altitude,heading_deg` を持つ waypoint CSV へ `x,y,z,q1,q2,q3,q4` を書き戻す補助ツールです。
-
-```bash
-python3 src/geo_pose_converter/tools/llh_to_enu_csv.py \
-  --input src/route_planner/routes \
-  --config src/geo_pose_converter/params/default.yaml \
-  --in-place
-```
-
-主な処理は次の通りです。
-
-- `latitude` / `longitude` を持つ CSV を再帰的に処理する。
-- `params/default.yaml` の projection を使って LLH から ENU `x,y,z` を生成する。
-- `heading_deg` がある場合、真北基準・時計回り heading を ENU yaw に変換し、`q1,q2,q3,q4` を生成する。
-- `--in-place` 指定時は CSV を直接上書きする。`.bak` は作成しない。
-- `--output-dir` を指定すると、入力ディレクトリ構造を保ったまま別ディレクトリへ出力する。
-
-`route_planner/tools/convert_route_csv_to_llh_heading.py` と組み合わせる場合は、先に LLH/heading 形式へ変換し、その後このツールで ENU pose を再生成します。
-
-```bash
-python3 src/route_planner/tools/convert_route_csv_to_llh_heading.py \
-  src/route_planner/routes
-python3 src/geo_pose_converter/tools/llh_to_enu_csv.py \
-  --input src/route_planner/routes \
-  --config src/geo_pose_converter/params/default.yaml \
-  --in-place
-```
+| `pose_llh_topic` | `/localization/pose_llh` | `llh_osm_viewer_node` が表示する自己位置LLH topic。 |
+| `active_route_topic` | `/active_route` | `llh_osm_viewer_node` がroute overlayに使うtopic。 |
+| `active_target_llh_topic` | `/route/active_target_llh` | `llh_osm_viewer_node` がactive target overlayに使うtopic。 |
+| `stale_timeout_s` | `1.0` | viewer上でposeをSTALE扱いにする受信停止時間[s]。 |
+| `lost_timeout_s` | `3.0` | viewer上でposeをLOST扱いにする受信停止時間[s]。 |
 
 ## 動作確認例
 route stack のシミュレーション実行中に、別プロセスで以下を起動すると OSM 上の自己位置を確認できます。
@@ -145,3 +139,6 @@ ros2 run geo_pose_converter llh_osm_viewer_node --ros-args \
 - `/localization/pose_llh` が `tc_geo_msgs/msg/GeoPoseWithQuality` として publish される。
 - `http://127.0.0.1:18765/pose` が `null` ではなく、route 近傍の緯度経度を返す。
 - OSM 上に赤い二等辺三角形が表示され、走行に合わせて移動する。
+- `/active_route` に `Waypoint.geo_pose` が含まれる場合、青いroute polylineとwaypoint点が表示される。
+- `/route/active_target_llh` がpublishされる場合、橙色のactive target点が表示される。
+- `http://127.0.0.1:18765/state` の `pose_status` が受信停止時間に応じて `OK` / `STALE` / `LOST` へ変わる。

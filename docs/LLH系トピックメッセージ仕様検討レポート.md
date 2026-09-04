@@ -59,11 +59,13 @@
 
 `route_follower` と `robot_navigator` は、到達判定、障害物回避、速度指令生成を平面距離・yawに基づいて行う。ここへLLHを直接入れると、距離計算、方位計算、許容誤差、障害物回避subgoal生成の全てを再設計する必要がある。したがって、走行制御の正本をLLHへ置き換えるべきではない。
 
-### 3.2 route CSVにはLLHがあるが、現行公開msgでは失われる
+### 3.2 route CSVの正本は用途ごとにLLHまたはENUの一方にする
 
-`route_planner` の `WaypointRecord` は `latitude` と `longitude` を保持する。CSV parserも `lat` / `latitude`、`lon` / `longitude` を読む。ただし、`WaypointRecord` から `tc_route_msgs/Waypoint` へ変換する時点でLLH fieldが存在しないため、`/active_route` にはLLHが出ない。
+実コース用 route CSV は `latitude` / `longitude` / `heading_deg` を正本とし、走行に必要な ENU pose は `route_planner` が起動時に `geo_pose_converter.geo_core` のライブラリで生成する。simulation / Gazebo 用 route CSV は LLH を持たない ENU-only CSV とし、`x,y,z,q1..q4` をそのまま使用する。
 
-この状態は、走行制御だけを考えれば成立する。しかし、GUI、HTML遠隔観測UI、route editor、ログ解析を含めたシステム全体では、routeの地理的正本が公開interfaceに残らないという問題になる。
+LLH と ENU を同一 CSV に併記することは移行・検証目的では許容するが、二重正本にはしない。併記時は warning を出し、LLH を正本として ENU を再生成する。併記 ENU は水平 0.10 m、鉛直 0.30 m、heading 1.0 deg の閾値で検証し、超過時は warning を出す。
+
+この方針により、route editor やログ解析で使う地理的正本は LLH に集約しつつ、走行制御系へ渡す `/active_route` では従来通り ENU pose を保持できる。
 
 ### 3.3 `rtk_gps_um982` はraw入力driverであり、融合後自己位置ではない
 
@@ -428,17 +430,19 @@ raw GPS topicは廃止しない。`GeoPoseWithQuality` はraw topicを置き換�
 - ENU/LLH変換条件を `MapProjection` として提供する。
 - heading規約を一元管理する。
 
-`geo_pose_converter` はroute versionや停止属性を知らないため、`/active_route` はpublishしない。ただし、route生成系が投影条件を参照できるよう、projection設定を共有する。
+`geo_pose_converter` はroute versionや停止属性を知らないため、`/active_route` はpublishしない。ただし、route生成系が同じ投影条件と変換式を使えるよう、`geo_core.py` を ROS 非依存ライブラリとして提供し、projection設定を `params/default.yaml` などの共通 parameter YAML で管理する。通常の route 生成では service 呼び出しに依存せず、`route_planner` が install 済み Python ライブラリとして `geo_pose_converter.geo_core` を import する。
 
 ### 9.2 `route_planner`
 
 `route_planner` は以下を担当する。
 
-- route CSVからENU poseとLLH poseを読み込む。
+- 実コース用 LLH-only CSV から `latitude`, `longitude`, `altitude`, `heading_deg` を読み込み、`geo_pose_converter.geo_core` で ENU pose と quaternion を生成する。
+- simulation / Gazebo 用 ENU-only CSV では `x,y,z,q1..q4` をそのまま使用し、LLH field は持たせない。
+- LLH と ENU が併記された CSV は warning を出し、LLH を正本として採用する。併記 ENU は整合性検証にのみ使う。
 - CSVにLLHがあるwaypointは `has_geo_pose=true`, `geo_pose_source=GEO_SOURCE_ROUTE_FILE` とする。
-- CSVにLLHがなく、ENUから逆投影可能なwaypointは `geo_pose_source=GEO_SOURCE_PROJECTED_FROM_ENU` とする。
+- CSVにLLHがないwaypointは ENU-only route として `has_geo_pose=false` とし、必要な表示変換は projector 側で派生させる。
 - `Route.projection` を埋めた `tc_route_msgs/Route` をservice responseとして返す。
-- CSV書き戻し時に `latitude`, `longitude`, `altitude`, `heading_deg` を落とさない。
+- `projection_config_path` で `geo_pose_converter` の共通 parameter YAML を参照し、route_planner 固有の `origin_*` 設定を持たない。
 
 ### 9.3 `route_manager`
 
@@ -534,7 +538,7 @@ LLH系topic/msg仕様の実装完了条件は以下とする。
 - `Route.projection.projection_id` がpublishされ、GUIで表示できる。
 - `/active_route.version` は従来どおりroute更新ごとに管理される。
 - `/active_target` はENU poseのまま維持され、既存 `robot_navigator` と `obstacle_monitor` の入力型を変えない。
-- `/localization/pose_llh` で、融合後または暫定自己位置の緯度・経度・高度・heading・qualityを取得できる。
+- `/localization/pose_llh` で、融合後または暫定自己位置の緯度・経度・heading・qualityを取得できる。GNSS/localization由来の高度がある場合は `GeoPoint.has_altitude=true` で高度も保持する。
 - `robot_console` はOSM地図表示に必要な座標変換を内部に持たず、公開topicのLLH fieldを表示できる。
 - raw GNSS位置と融合後自己位置が画面上で区別される。
 - heading表示が真北基準CWで統一され、ENU yawとの混同がない。
@@ -546,7 +550,7 @@ LLH系topic/msg仕様の実装完了条件は以下とする。
 | 地理系package名 | `tc_geo_msgs` を推奨候補とする。短縮名が必要ならチーム内で再検討する | Phase Aではblocker |
 | route interface package名 | `tc_route_msgs` に完全移行する。旧 package 名は残さない | 高 |
 | `header.frame_id` | LLH msgは `earth` 推奨。既存REP運用やTF設計と合わせて最終確認する | 低 |
-| 高度の扱い | WGS84楕円体高を既定にする。MSL高度が必要なら別field追加を検討する | 中 |
+| 高度の扱い | 走行用ENUでは高度を使わず `z=0.0` を標準とする。GNSS/localization由来のLLH高度は `GeoPoint.has_altitude=true` で保持し、routeやtargetの高度未指定・ENU逆投影由来は `has_altitude=false` とする | 中 |
 | route CSVの高度・heading | 現行CSVはLLH altitude/heading_degを正規化していない。route編集仕様と合わせて拡張する | Phase Bでblocker |
 | `/route/active_target_llh` のpublisher | `route_follower` がpublishするか、`robot_console` backendがView生成するかを決める | 中 |
 | 逆投影に必要な原点管理 | `geo_pose_converter` のparamsまたは `MapProjection` で一元管理する必要がある | Phase Cではblocker |
@@ -571,7 +575,7 @@ LLH系topic/msg仕様の実装完了条件は以下とする。
 
 | リスク | 内容 | 対策 |
 | --- | --- | --- |
-| ENU/LLH不整合 | 同一waypointに対するENUとLLHが異なる原点・回転で生成される | `Route.projection` を付与し、route生成時に整合検査を行う |
+| ENU/LLH不整合 | 同一waypointに対するENUとLLHが異なる原点・回転で生成される | `geo_pose_converter` の共通 projection 設定を参照し、併記CSVはroute生成時に整合検査を行う |
 | heading二重変換 | `/rtk_gps/heading` のENU quaternionと `RtkStatus.heading_deg` を混在させる | raw headingからENU yawへ変換する場所を `geo_pose_converter` に限定する |
 | route metadata欠落 | `route_manager` の内部モデルでLLHやindexが失われる | `WaypointLite` / `RouteModel` を正本情報を落とさない形へ拡張する |
 | GUI fallback固定化 | ENU `/localization/pose_enu` 表示が通常地図表示の正本として残る | 画面仕様ではLLH topicを表示正本とし、ENU表示はデバッグ・fallback扱いにする |

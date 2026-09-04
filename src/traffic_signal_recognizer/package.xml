@@ -5,7 +5,7 @@
   <version>0.0.1</version>
   <description>Traffic signal GO/STOP recognizer based on YOLO detections</description>
   <maintainer email="user@todo.todo">user</maintainer>
-  <license>TODO: License declaration</license>
+  <license>MIT</license>
 
   <depend>cv_bridge</depend>
   <depend>rclpy</depend>

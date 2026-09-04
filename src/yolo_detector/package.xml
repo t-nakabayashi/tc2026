@@ -5,7 +5,7 @@
   <version>0.0.1</version>
   <description>YOLO11n object detection for ROS2</description>
   <maintainer email="user@todo.todo">user</maintainer>
-  <license>TODO: License declaration</license>
+  <license>MIT</license>
 
   <depend>rclpy</depend>
   <depend>sensor_msgs</depend>

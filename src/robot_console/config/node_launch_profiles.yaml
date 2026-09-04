@@ -1,0 +1,296 @@
+# robot_console 起動対象ノードのprofile定義。
+#
+# 本ファイルは docs/robot_console_gui_architecture_design.md 9章（起動管理設計）と
+# docs/robot_console_gui_screen_function_design.md 4章（起動・設定タブ）を正とする。
+# 起動候補の追加・変更は本ファイルの編集のみで完結させ、UIコードへ固定リストを
+# 埋め込まない。
+#
+# 各フィールドの意味:
+#   profile_id             : 起動対象を一意に識別するID。
+#   category                : 起動候補ツリーのカテゴリ（実機基盤/GPS/GNSS等）。
+#   display_name             : UI表示名。
+#   package / launch_file    : 実運用launch。
+#   param_argument           : パラメータファイルを渡すlaunch引数名（無い場合はnull）。
+#   param_package             : パラメータ探索対象パッケージ（packageと異なる場合のみ指定）。
+#   default_param             : 既定パラメータファイルの相対パス。
+#   launch_order              : 一斉起動時の既定順序（昇順）。
+#   startup_group              : この profile が主に属する起動基盤の種別。
+#                                 real_robot_base   : 実機基盤（ypspur/GPSなど、simulator代替を持たない）
+#                                 simulation_base    : Gazebo等のシミュレーション基盤
+#                                 desktop_check       : simulator代替launchにより机上確認が可能
+#                                 common               : 実機・シミュレーション・机上確認に共通して使う経路/走行制御スタック
+#                                 optional              : 可視化など業務モードのプリセットに含めないオプション
+#   health_topics              : 稼働判定に用いる代表トピック。
+#   alternate_launch_file        : 同一profile内で切替可能な代替実装launch。
+#   launch_toggle_label            : alternate_launch_file切替チェックボックスの表示文言。
+#   simulator_package / simulator_launch_file : 実センサ・実機基盤を使わない疑似データ代替launch。
+#   simulator_argument_map           : overrides のキーを simulator_launch_file 向けの引数名へ
+#                                        変換する対応表（未掲載のキーは simulator へ渡さない）。
+#   user_arguments                     : ノード設定編集パネルで編集可能な起動時override引数名。
+#   default_arguments                   : user_arguments の既定値（未掲載の引数は既定値なし）。
+
+profiles:
+  - profile_id: ypspur_ros2
+    category: real_robot_base
+    display_name: YP-Spur Coordinator
+    package: ypspur_ros2
+    launch_file: ypspur_ros2.launch.py
+    param_argument: config
+    default_param: config/default.yaml
+    launch_order: 30
+    startup_group: real_robot_base
+    health_topics:
+      - /ypspur_ros/odom
+    user_arguments:
+      - cmd_vel_topic
+      - odom_topic
+      - start_coordinator
+      - coordinator_device
+      - coordinator_param
+    default_arguments:
+      cmd_vel_topic: /cmd_vel
+      # robot_navigator が購読する topic に合わせる。異なる名前にすると
+      # robot_navigator の制御ループが odom 未受信となり停止指令を出し続ける。
+      odom_topic: /ypspur_ros/odom
+      start_coordinator: 'false'
+
+  - profile_id: rtk_gps_um982
+    category: gps_gnss
+    display_name: RTK GPS UM982
+    package: rtk_gps_um982
+    launch_file: rtk_gps_um982.launch.py
+    param_argument: config
+    default_param: config/default.yaml
+    launch_order: 20
+    startup_group: real_robot_base
+    health_topics:
+      - /rtk_gps/fix
+      - /rtk_gps/heading
+      - /rtk_gps/rtk_status
+
+  - profile_id: obstacle_route_sim
+    category: simulation_base
+    display_name: Obstacle Route Simulator
+    package: obstacle_route_sim
+    launch_file: sim_obstacle_route.launch.py
+    param_argument: null
+    launch_order: 20
+    startup_group: simulation_base
+    health_topics: []
+    user_arguments:
+      - road_type
+      - road_width
+      - enable_pylons
+      - pylon_seed
+      - enable_route_blocker
+      - start_gazebo_gui
+      - use_sim_time
+    default_arguments:
+      road_type: straight
+      road_width: '5.0'
+      enable_pylons: 'false'
+      pylon_seed: '0'
+      enable_route_blocker: 'false'
+      start_gazebo_gui: 'true'
+      use_sim_time: 'true'
+
+  - profile_id: route_planner
+    category: route_stack
+    display_name: Route Planner
+    package: route_planner
+    launch_file: route_planner.launch.py
+    param_argument: param_file
+    default_param: params/default.yaml
+    launch_order: 50
+    startup_group: common
+    health_topics: []
+
+  - profile_id: route_manager
+    category: route_stack
+    display_name: Route Manager
+    package: route_manager
+    launch_file: route_manager.launch.py
+    param_argument: param_file
+    default_param: params/default.yaml
+    launch_order: 60
+    startup_group: common
+    health_topics:
+      - /active_route
+      - /route_state
+      - /manager_status
+      - /mission_info
+    user_arguments:
+      - start_label
+      - goal_label
+      - checkpoint_labels
+
+  # 自己位置・目標のENU→LLH変換を担う。地図表示（PyQt5 MapView / HTML観測UI）は
+  # 緯度経度を必要とするため、地図を使う構成ではこのprofileの起動が前提になる
+  # （robot_console 側は変換を持たず /localization/pose_llh と
+  # /route/active_target_llh を購読するだけ）。
+  - profile_id: geo_pose_converter
+    category: route_stack
+    display_name: Geo Pose Converter
+    package: geo_pose_converter
+    launch_file: geo_pose_converter.launch.py
+    param_argument: config
+    default_param: params/default.yaml
+    launch_order: 65
+    startup_group: common
+    health_topics:
+      - /localization/pose_llh
+      - /route/active_target_llh
+    user_arguments:
+      - enable_geo_pose_converter
+      - pose_enu_topic
+      - pose_llh_topic
+    default_arguments:
+      # GNSS実機を伴わない構成（シミュレーション・机上確認）では
+      # geo_pose_converter_node（/rtk_gps/* を購読する）は不要なため既定で無効にし、
+      # route_geo_projector_node（ENU→LLH変換）だけを起動する。
+      enable_geo_pose_converter: 'false'
+
+  - profile_id: route_follower
+    category: route_stack
+    display_name: Route Follower
+    package: route_follower
+    launch_file: route_follower.launch.py
+    param_argument: param_file
+    default_param: params/default.yaml
+    launch_order: 70
+    startup_group: common
+    health_topics:
+      - /active_target
+      - /follower_state
+
+  - profile_id: drive_mode_manager
+    category: drive_stack
+    display_name: Drive Mode Manager
+    package: drive_mode_manager
+    launch_file: drive_mode_manager.launch.py
+    param_argument: param_file
+    default_param: params/default.yaml
+    launch_order: 40
+    startup_group: common
+    health_topics:
+      - /drive_mode_status
+    user_arguments:
+      - joy_input
+      - start_gui
+    default_arguments:
+      joy_input: joy_node
+
+  - profile_id: robot_navigator
+    category: drive_stack
+    display_name: Robot Navigator
+    package: robot_navigator
+    launch_file: robot_navigator.launch.py
+    param_argument: param_file
+    default_param: params/default.yaml
+    launch_order: 90
+    startup_group: desktop_check
+    health_topics:
+      - /cmd_vel/autonomous
+    simulator_package: robot_navigator
+    simulator_launch_file: robot_simulator.launch.py
+    simulator_argument_map:
+      pose_enu_topic: pose_topic
+      odom_topic: odom_topic
+    user_arguments:
+      - cmd_vel_topic
+      - odom_topic
+      - pose_enu_topic
+    default_arguments:
+      cmd_vel_topic: /cmd_vel/autonomous
+      odom_topic: /ypspur_ros/odom
+
+  - profile_id: obstacle_monitor
+    category: obstacle_stack
+    display_name: Obstacle Monitor
+    package: obstacle_monitor
+    launch_file: obstacle_monitor.launch.py
+    param_argument: null
+    launch_order: 80
+    startup_group: desktop_check
+    health_topics:
+      - /obstacle_avoidance_hint
+      - /sensor_viewer
+    simulator_package: obstacle_monitor
+    simulator_launch_file: laser_scan_simulator.launch.py
+
+  - profile_id: road_blockage_detector
+    category: perception_stack
+    display_name: Road Blockage Detector
+    package: road_blockage_detector
+    launch_file: road_blockage_perception.launch.py
+    alternate_launch_file: road_blockage_perception_yolo.launch.py
+    launch_toggle_label: PyTorch版YOLOを使用
+    param_argument: detector_param_file
+    param_package: road_blockage_detector
+    default_param: params/default.yaml
+    launch_order: 100
+    startup_group: desktop_check
+    health_topics:
+      - /perception/road_blockage/decision_image
+    simulator_package: yolo_detector
+    simulator_launch_file: camera_simulator_node.launch.py
+
+  - profile_id: traffic_signal_recognizer
+    category: perception_stack
+    display_name: Traffic Signal Recognizer
+    package: traffic_signal_recognizer
+    launch_file: traffic_signal_perception.launch.py
+    param_argument: recognizer_param_file
+    param_package: traffic_signal_recognizer
+    default_param: params/default.yaml
+    launch_order: 110
+    startup_group: desktop_check
+    health_topics:
+      - /perception/traffic_signal/decision_image
+    simulator_package: yolo_detector
+    simulator_launch_file: camera_simulator_node.launch.py
+
+  - profile_id: route_markers
+    category: visualization
+    display_name: Route Markers
+    package: route_manager
+    launch_file: active_route_marker.launch.py
+    param_argument: null
+    launch_order: 210
+    startup_group: optional
+    health_topics:
+      - /active_route/markers
+    user_arguments:
+      - active_route_topic
+      - marker_topic
+    default_arguments:
+      active_route_topic: /active_route
+      marker_topic: /active_route/markers
+
+  - profile_id: target_marker
+    category: visualization
+    display_name: Target Marker
+    package: route_follower
+    launch_file: active_target_marker.launch.py
+    param_argument: null
+    launch_order: 220
+    startup_group: optional
+    health_topics:
+      - /active_target/marker
+    user_arguments:
+      - active_target_topic
+      - marker_topic
+    default_arguments:
+      active_target_topic: /active_target
+      marker_topic: /active_target/marker
+
+  - profile_id: robot_console_rviz
+    category: visualization
+    display_name: RViz
+    package: robot_console
+    launch_file: robot_console_rviz.launch.py
+    param_argument: rviz_config
+    default_param: rviz/robot_console_view.rviz
+    launch_order: 200
+    startup_group: optional
+    health_topics: []

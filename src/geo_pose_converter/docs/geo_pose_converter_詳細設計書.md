@@ -43,7 +43,7 @@ GUI と HTML 遠隔観測 UI では、GPS 受信状態、自己位置 LLH、rout
 | `rtk_gps_um982` | GNSS receiver から raw fix、heading、RTK status を取得して ROS topic 化する | `geo_pose_converter_node` の入力元。測位デバイス固有の処理はここに閉じる |
 | `tc_geo_msgs` | LLH point / pose / quality / projection の共通 message を提供する | `geo_pose_converter` が publish / subscribe する地理系 message 定義 |
 | `tc_route_msgs` | route、waypoint、active target LLH など route 系 interface を提供する | `route_geo_projector_node` が `/active_route` と `/route/active_target_llh` で利用する |
-| `route_planner` | CSV/YAML から route 正本を生成し、ENU pose と route CSV 由来 LLH を `Route` に格納する | `Route.projection` と `Waypoint.geo_pose` の生成元 |
+| `route_planner` | CSV/YAML から route 正本を生成し、LLH-only CSV から ENU pose を生成して `Route` に格納する | `geo_core.py` をライブラリ import し、`Route.projection` と `Waypoint.geo_pose` を生成する |
 | `route_manager` | route の受理、再配信、SHIFT/SKIP/再計画結果の管理を行う | `/active_route` の publisher。LLH/projection field を保持して再配信する |
 | `route_follower` | `/active_route` の ENU waypoint と ENU 自己位置を使い、走行制御用 `/active_target` を publish する | `route_geo_projector_node` に active target ENU を提供する。LLH は制御に使わない |
 | `robot_navigator` | ENU 自己位置と `/active_target` の ENU pose から自律速度指令を生成する | `geo_pose_converter` とは直接接続しない。LLH topic は速度制御に使わない |
@@ -69,7 +69,7 @@ src/geo_pose_converter/
     └── geo_pose_converter_詳細設計書.md
 ```
 
-`geo_core.py` は ROS 非依存の座標変換ロジックを持つ。ROS message 生成は `message_utils.py` に寄せる。各 node は publisher / subscriber / parameter 管理に責務を限定する。
+`geo_core.py` は ROS 非依存の座標変換ロジックを持つ。ROS message 生成は `message_utils.py` に寄せる。各 node は publisher / subscriber / parameter 管理に責務を限定する。`geo_core.py` は install 後に他パッケージから通常の Python ライブラリとして import できる公開ユーティリティでもあり、`route_planner` は LLH-only route CSV から ENU pose を生成するためにこれを利用する。
 
 ### 3.1 パッケージ内責務分担
 
@@ -88,11 +88,13 @@ src/geo_pose_converter/
 
 `route_geo_projector_node` は ENU pose を LLH pose へ変換する projector である。本来的には `/localization/pose_enu` を購読して `/localization/pose_llh` を publish する。また、`/active_route` の `Waypoint.geo_pose` と `/active_target` の ENU pose から `/route/active_target_llh` を生成する。自己位置は距離・方位表示のためだけに使い、走行制御や route 更新判断には使わない。
 
+`route_geo_projector_node` と `route_planner_node` の直接の起動順依存は持たせない。`route_planner_node` は `/get_route` service provider であり、projector が実際に比較・利用する正本は `route_manager` が publish する `/active_route.projection` である。`/active_route` は Transient Local QoS で配信されるため、projector が後から起動した場合も最新 route を受信できる。projector が先に起動して `/localization/pose_enu` を先に受信した場合は、route 到着までは起動時 parameter の projection で `/localization/pose_llh` を生成するため、統合 launch では `route_planner` と `geo_pose_converter` 系 node へ同じ `projection_config_path` を渡す必要がある。
+
 ## 4. パッケージ構成・ファイル配置
 
 | ファイル | 役割 |
 | --- | --- |
-| `geo_core.py` | WGS84 ECEF、LLH/ENU、heading/yaw 変換 |
+| `geo_core.py` | WGS84 ECEF、LLH/ENU、heading/yaw 変換、ROS 2 parameter YAML からの `ProjectionConfig` 読み込み |
 | `message_utils.py` | `tc_geo_msgs` と `tc_route_msgs` の message 生成補助 |
 | `geo_pose_converter_node.py` | GNSS raw topic から GNSS 単独 LLH / ENU pose を生成し、投影条件を publish する |
 | `route_geo_projector_node.py` | ENU pose topic を LLH pose topic へ変換し、route / active target の LLH 派生情報を生成する |
@@ -158,6 +160,8 @@ GNSS センサ系 topic の入力がない simulation 統合動作確認では�
 
 `origin_latitude`、`origin_longitude`、`origin_altitude` は ENU 座標と LLH 座標を相互変換するための投影原点である。`geo_pose_converter_node` と `route_geo_projector_node` は同じ map frame 上の ENU 座標を扱うため、同一の `ProjectionConfig` を使わなければならない。`params/default.yaml` では `/**` の ROS 2 wildcard parameter に投影条件を定義し、両 node が同じ値を受け取る構成にする。node 別の `origin_*` 定義は持たせない。`route_geo_projector` には ROS 2 parameter file の target node として認識させるために空の `ros__parameters` のみを置く。launch や運用用 YAML で上書きする場合も、投影条件は共通定義として 1 箇所で管理する。
 
+将来追加する統合 launch / bringup package では、`projection_config_path` を top-level launch 引数として 1 つだけ受け取り、`route_planner`、`geo_pose_converter_node`、`route_geo_projector_node` へ同じ YAML を渡す。個別 node の launch 引数や profile metadata に `origin_*` を分散定義してはならない。
+
 ## 7. データモデル・内部状態
 
 `ProjectionConfig` は ROS 非依存 dataclass として投影条件を保持する。`LlhPoint` は WGS84 LLH、`EnuPoint` は map frame 上の ENU 相当座標を表す。`ProjectionConfig` は `geo_pose_converter_node`、`route_geo_projector_node`、route 生成側で同一値を使う前提であり、値がずれると GNSS ENU、走行系 ENU、表示 LLH、active target LLH が互いに整合しない。
@@ -180,21 +184,24 @@ GNSS センサ系 topic の入力がない simulation 統合動作確認では�
 ### 8.2 自己位置 LLH 生成
 
 1. `route_geo_projector_node` が ENU 自己位置 topic を受信する。
-2. 受信した ENU pose を `ProjectionConfig` で LLH へ逆変換する。
-3. 変換結果を `/localization/pose_llh` として publish する。
-4. `/localization/pose_llh` は GUI / HTML UI / OSM 表示 / ログ用であり、走行制御へは渡さない。
+2. 受信した ENU pose の `header.frame_id` と有効 projection の `map_frame_id` を比較し、不一致なら warning を出す。
+3. 受信した ENU pose を `ProjectionConfig` で LLH へ逆変換する。
+4. 変換結果を `/localization/pose_llh` として publish する。
+5. `/localization/pose_llh` は GUI / HTML UI / OSM 表示 / ログ用であり、走行制御へは渡さない。
 
 ### 8.3 Active target LLH 生成
 
 1. `/active_route` を受信し、projection と waypoint LLH を保持する。
-2. `/follower_state` から active waypoint index / label を保持する。
-3. `/active_target` 更新時、route waypoint LLH があれば target LLH として採用する。
-4. route waypoint LLH がなければ `/active_target` ENU pose を projection で LLH へ変換する。
-5. ENU 自己位置から生成した LLH 自己位置を用いて距離・方位を計算し、`/route/active_target_llh` を publish する。
+2. `/active_route.projection` と起動時 parameter から得た projection を比較する。`projection_id`、datum、frame、origin、yaw offset のいずれかが不一致なら error ログを出す。変換には `Route.projection` を優先して使う。
+3. `/follower_state` から active waypoint index / label を保持する。
+4. `/active_target` 更新時、`header.frame_id` と有効 projection の `map_frame_id` を比較し、不一致なら warning を出す。
+5. route waypoint LLH があれば target LLH として採用する。
+6. route waypoint LLH がなければ `/active_target` ENU pose を projection で LLH へ変換する。
+7. ENU 自己位置から生成した LLH 自己位置を用いて距離・方位を計算し、`/route/active_target_llh` を publish する。
 
 ## 9. 主要アルゴリズム・判定ロジック
 
-LLH/ENU 変換は WGS84 楕円体から ECEF へ変換し、原点 ECEF との差分を East/North/Up へ射影する。`map_yaw_offset_rad` により ENU east/north 軸と map x/y 軸の回転差を扱う。
+LLH/ENU 変換は WGS84 楕円体から ECEF へ変換し、原点 ECEF との差分を East/North/Up へ射影する。`map_yaw_offset_rad` により ENU east/north 軸と map x/y 軸の回転差を扱う。本プロジェクトの走行用 ENU pose は2D座標として扱い、publishする `Pose.position.z` は原則 `0.0` とする。GNSS由来の高度はLLH系topicで保持し、ENU逆投影だけで生成したLLH poseは `GeoPoint.has_altitude=false` とする。
 
 heading は真北 0 度・時計回り正、ENU yaw は東 0 rad・反時計回り正とする。変換式は `heading = 90deg - yaw_enu` を正規化したものである。
 
@@ -206,6 +213,8 @@ heading は真北 0 度・時計回り正、ENU yaw は東 0 rad・反時計回�
 
 `geo_pose_converter.launch.py` は `geo_pose_converter_node` と `route_geo_projector_node` を起動し、`params/default.yaml` を読み込む。Phase 2 以降の launch 既定値は `gnss_pose_enu_topic=/localization/pose_enu`、`pose_enu_topic=/localization/pose_enu` とし、`localization_fusion` 実装前の統合確認で走行系と projector が同じ ENU 自己位置を使える構成にする。`localization_fusion` 実装後は `gnss_pose_enu_topic=/gnss/pose_enu`、`pose_enu_topic=/localization/pose_enu` とする。
 
+`enable_llh_osm_viewer` launch 引数を `true` にした場合は、診断用の `llh_osm_viewer_node` も同時に起動する。viewer は `pose_llh_topic`、`/active_route`、`active_target_llh_topic` を購読し、HTTPビューアを提供する。HTTP host、port、ブラウザ自動起動は `llh_osm_viewer_host`、`llh_osm_viewer_port`、`llh_osm_viewer_open_browser` で指定する。viewerは統合確認用であり、正式な `robot_console` HTML遠隔観測UIを置き換えない。
+
 GNSS センサ系 topic の入力がない simulation 統合動作確認では、`enable_geo_pose_converter=false` として `geo_pose_converter_node` を起動しない。simulation または別 localizer が `/localization/pose_enu` を publish し、`route_geo_projector_node` も同 topic を購読する。
 
 `localization_fusion` 実装後は、実機・シミュレーションの統合 launch で `geo_pose_converter_node`、`localization_fusion`、`route_geo_projector_node` の接続を明示する。走行系は `/localization/pose_enu` を購読する。
@@ -214,6 +223,8 @@ GNSS センサ系 topic の入力がない simulation 統合動作確認では�
 
 `params/default.yaml` には東京駅原点の具体値を設定するため、既定設定でも LLH/ENU 変換は定義済みである。ただし、実コースや実 map が東京駅原点以外で作られている場合は、launch または運用用 parameter YAML の共通定義で投影原点を上書きする必要がある。route が未受信、または active target が未受信の場合、`route_geo_projector_node` は active target LLH を publish しない。
 
+`route_geo_projector_node` は `/active_route` 受信時に、起動時 parameter 由来の projection と `Route.projection` を比較する。これは `route_planner` が LLH-only route CSV から ENU pose を生成した条件と、projector が ENU pose を LLH へ戻す条件が一致しているかを検出するためである。不一致時は error ログを出す。ただし、route 表示と active target LLH 生成では `/active_route` に埋め込まれた `Route.projection` を優先する。
+
 ENU 自己位置 topic が未受信の場合、`route_geo_projector_node` は `/localization/pose_llh` を publish しない。初期実装や診断用途で `/gnss/pose_llh` を fallback 表示する場合でも、それは GUI/ログ表示のための補助であり、走行系自己位置の採用判断ではない。
 
 ## 13. UI・可視化仕様
@@ -221,6 +232,16 @@ ENU 自己位置 topic が未受信の場合、`route_geo_projector_node` は `/
 GUI は通常、自己位置表示には `/localization/pose_llh` を使用する。GPS 受信状況の詳細表示には `/gnss/pose_llh` または `/rtk_gps/rtk_status` を併用する。HTML UI は `/active_route` と `/route/active_target_llh` を利用して route と active target を地図上に描画する。
 
 走行系の `/localization/pose_enu` は GUI 上では ENU 自己位置のデバッグ表示には使えるが、OSM 上の通常表示では `/localization/pose_llh` を使う。
+
+`llh_osm_viewer_node` は `geo_pose_converter` の診断・統合確認用可視化ノードである。表示対象は以下とする。
+
+- `/localization/pose_llh`: 赤い二等辺三角形で自己位置とheadingを表示する。
+- `/active_route`: `Waypoint.has_geo_pose=true` の waypoint を青いroute polylineと点で表示する。LLHを持たないwaypointは表示対象外として数を `skipped_waypoints` に含める。
+- `/route/active_target_llh`: 橙色の点でactive targetを表示する。
+- `/state`: HTTP JSON APIとして、自己位置、route、active target、`pose_status` を返す。
+- `/pose`: 後方互換の簡易HTTP JSON APIとして、自己位置のみを返す。
+
+`pose_status` は最後に `/localization/pose_llh` を受信した壁時計時刻からの経過時間で `OK` / `STALE` / `LOST` / `NO_DATA` を判定する。通信状態による地図マーカー色変更は行わず、状態表示欄でのみ示す。地図描画は Leaflet CDN と OpenStreetMap 外部タイルを利用し、ネットワーク接続がある運用を前提とする。オフラインタイルキャッシュや正式な遠隔観測UIのSnapshot APIは `robot_console` 側の将来実装範囲とする。
 
 ## 14. 依存関係・ビルド設定
 
@@ -234,7 +255,10 @@ GUI は通常、自己位置表示には `/localization/pose_llh` を使用す�
 - GNSS 入力なし simulation では、`geo_pose_converter_node` を起動せず、simulation または別 localizer が publish する ENU 自己位置 topic から `route_geo_projector_node` が `/localization/pose_llh` を生成できることを確認する。
 - `localization_fusion` 実装後は、`geo_pose_converter_node` が `/gnss/pose_enu` を publish し、`localization_fusion` が `/localization/pose_enu` を publish し、`route_geo_projector_node` が `/localization/pose_llh` を publish できることを確認する。
 - `params/default.yaml` で投影条件が `/**` の共通 parameter として 1 箇所に定義され、node 別に異なる `origin_*` を設定できる構造になっていないことを確認する。
+- `route_planner` が `geo_pose_converter.geo_core` を install 後に import し、LLH-only route CSV から ENU pose を生成できることを確認する。
 - `/active_route` に LLH が含まれる route で `/route/active_target_llh` の緯度経度が waypoint LLH と一致することを確認する。
+- `llh_osm_viewer_node` のJSON生成テストで、pose、route、active target、`pose_status` が期待通り生成されることを確認する。
+- `enable_llh_osm_viewer:=true` を指定した launch で viewer が起動対象に含まれることを確認する。
 - 自律走行確認では `/active_target` と route follower の ENU 制御が変更前と同等に動作することを確認する。
 
 ## 16. 互換性・移行・影響範囲
@@ -260,6 +284,9 @@ Phase 2 で走行系の現在自己位置入力は `/localization/pose_enu` へ�
 
 | 日付 | 版 | 変更概要 |
 | --- | --- | --- |
+| 2026-06-03 | 1.8 | `llh_osm_viewer_node` の route/active target overlay、stale表示、launch引数、正式HTML UIとの差分を追記 |
+| 2026-06-02 | 1.7 | `route_geo_projector_node` の projection mismatch 検出、起動順、統合 launch での `projection_config_path` 一本化方針を追記 |
+| 2026-06-01 | 1.6 | `geo_core.py` を route_planner から参照する共通変換ライブラリとして明記し、projection YAML 読み込み責務を追加 |
 | 2026-05-29 | 1.5 | Phase 2 として旧 `/amcl_pose` を廃止し、走行系自己位置 topic を `/localization/pose_enu` へ統一 |
 | 2026-05-29 | 1.4 | LLH/ENU 変換原点を `/**` の共通 parameter として一本化し、東京駅原点の既定値を定義 |
 | 2026-05-29 | 1.3 | `geo_pose_converter_node` と `route_geo_projector_node` の本来的役割、localization_fusion 前後の topic remap、旧 `/amcl_pose` 廃止前提の移行手順を整理 |

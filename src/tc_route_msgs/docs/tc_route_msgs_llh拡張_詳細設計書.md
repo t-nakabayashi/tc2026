@@ -106,7 +106,7 @@ GUI と HTML UI は `/active_route` の `Waypoint.geo_pose` と `/route/active_t
 
 ## 16. 互換性・移行・影響範囲
 
-既存 `Waypoint` と `Route` に field を追加するため、生成済み message を利用する downstream package は再ビルドが必要である。topic 名と package 名は維持するため、今回 phase では import 名の変更は発生しない。
+既存 `Waypoint` と `Route` に field を追加するため、生成済み message を利用する downstream package は再ビルドが必要である。topic 名は維持するが、package 名は `route_msgs` から `tc_route_msgs` へ変更したため、downstream package は import、`package.xml`、`CMakeLists.txt` または `setup.py` を更新する必要がある。旧 package 名への互換 alias は提供しない。
 
 ## 17. 未決事項・今後の拡張
 

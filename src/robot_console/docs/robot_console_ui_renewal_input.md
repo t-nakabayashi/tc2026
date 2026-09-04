@@ -164,9 +164,11 @@ PyQt5ローカルUIは、以下の4タブ構成を正とする。
 
 ---
 
-## 6. 全タブ共通領域
+## 6. 全タブ共通領域（廃止）
 
-### 6.1 共通ステータスバー
+**本章は `robot_console_gui_screen_function_design.md` v0.2（2026-05-28）により廃止された。** 同文書2章・13章にある通り、共通ステータスバーは設けず、運行状態の詳細確認と操作はダッシュボードタブに集約する方針へ変更されている。本章以下の記述は初期検討時の案として履歴目的でのみ残し、実装時は `robot_console_gui_screen_function_design.md` の6章（ダッシュボードタブ）・7章（自己位置・センサ情報タブ）を正とする。
+
+### 6.1 共通ステータスバー（旧案・参考）
 
 全タブ共通で、小型のステータスバーを配置する。
 
@@ -992,7 +994,7 @@ PyQt5では、ImageStoreからQImage/QPixmapとして取得する。
 
 ### 13.3 推奨ディレクトリ構成
 
-一例として、以下のような構成を推奨する。
+**本節の構成案は初期検討時のものである。正式なディレクトリ構成は `robot_console_gui_architecture_design.md` 5章を正とする。** 同文書では、共通ステータスバー廃止に伴い `status_bar.py` を持たず、tkinter完全移行方針（同文書4章）に伴い `ui_tk/` を正式構成に含めない。
 
 ```text
 src/robot_console/robot_console/
@@ -1001,11 +1003,14 @@ src/robot_console/robot_console/
     command_model.py
     snapshot_model.py
     state_store.py
+    launch_profile.py
     launch_manager.py
     log_manager.py
     image_store.py
-    metrics.py
     freshness.py
+    metrics.py
+    localization_adapter.py
+    route_adapter.py
     map_model.py
 
   ros/
@@ -1015,7 +1020,6 @@ src/robot_console/robot_console/
   ui_qt/
     __init__.py
     main_window.py
-    status_bar.py
     dashboard_tab.py
     localization_sensor_tab.py
     launch_settings_tab.py
@@ -1033,9 +1037,6 @@ src/robot_console/robot_console/
       index.html
       app.js
       style.css
-
-  ui_tk/
-    legacy_main.py
 ```
 
 既存のパッケージ構造との整合性を見ながら調整してよいが、以下の方針は守る。
@@ -1048,35 +1049,42 @@ src/robot_console/robot_console/
 
 ### 13.4 移植フェーズ
 
+**本節のフェーズ計画は初期検討時のものである。以下は `robot_console_gui_architecture_design.md`・`robot_console_gui_screen_function_design.md` の内容（profile定義駆動、GPS/ypspur/simulator代替、机上確認、tkinter完全移行方針）に合わせて更新した版である。**
+
 推奨フェーズ:
 
 ```text
 Phase 1:
-  Core分離
-  - launch_manager
+  Core分離 + profile定義基盤
+  - launch_manager（profile定義駆動。simulator代替/alternate launchの切替を含む）
   - log_manager
-  - snapshot_model
+  - snapshot_model（gps_state等、architecture_design.md 8章のフィールドを含む）
   - metrics
   - freshness
+  - config/node_launch_profiles.yaml の初版整備
+    （ypspur_ros2, rtk_gps_um982, obstacle_route_sim, route_planner/manager/follower,
+      drive_mode_manager, robot_navigator, obstacle_monitor,
+      road_blockage_detector, traffic_signal_recognizer,
+      route_markers, target_marker, robot_console_rviz を含む）
 
 Phase 2:
   PyQt5 UI骨格作成
   - MainWindow
-  - 4タブ
-  - 共通ステータスバー
+  - 4タブ（共通ステータスバーは設けない）
 
 Phase 3:
   ダッシュボードタブ実装
-  - 運行状態
+  - 運行状態、GPS/Poseカード、Drive/CmdVelカード
   - イベントバナー
-  - 手動介入
+  - Manual Opsカード（手動介入）
+  - Node Healthカード
 
 Phase 4:
   起動・設定タブ実装
-  - ノード起動/停止
-  - route設定
-  - param選択
-  - 実効設定表示
+  - 業務モード選択（実機/シミュレーション/机上確認）とプリセット適用
+  - 起動候補ツリー、起動予定ノード一覧、ノード設定編集パネル
+  - simulator代替・alternate launchトグル
+  - 実効設定表示（起動内容プレビュー）
 
 Phase 5:
   コンソールログタブ実装
@@ -1093,6 +1101,19 @@ Phase 6:
   - 画像/センサビュー
   - 鮮度表示
 
+Phase 6.5:
+  GUIデザイン・機能の確認と調整
+  - Phase 2〜6でPyQt5ローカルUIの4タブ（ダッシュボード、自己位置・センサ情報、
+    起動・設定、コンソールログ）が揃った時点で実施する
+  - タブ横断の統一感（配色、余白、フォント、カード様式）を確認する
+  - 16:9論理キャンバスのスケーリングを、各タブの実際の情報密度で確認する
+  - タブ間の画面遷移（9章 画面間導線）が意図通りに機能するか確認する
+  - 指摘事項をPhase 2〜6の該当タブへ反映する
+  - この時点ではROS 2ノードとの実結合（`ros/console_node.py` によるConsoleCore
+    ⇔ Snapshot ⇔ UIの配線）が未実施のため、確認は `ConsoleSnapshot()` 既定値
+    またはテスト用の疑似Snapshotに基づくものに限られる。運用データに基づく
+    確認は、ROS実結合の完了後に別途行う
+
 Phase 7:
   HTML遠隔観測UI実装
   - Snapshot JSON
@@ -1101,9 +1122,9 @@ Phase 7:
   - 閲覧専用ページ
 
 Phase 8:
-  tkinter版legacy化
-  - 既存互換が必要な期間のみ維持
-  - 新規機能追加は原則停止
+  tkinter版の完全撤去
+  - `robot_console_gui_architecture_design.md` 4章の方針に従い、tkinter版を別UIとして残さず削除する
+  - entry point、README、launch、評価ツール、設計書の参照先をPyQt5版へ統一する
 ```
 
 ---
@@ -1298,11 +1319,13 @@ UIは、Coreから以下のような表示用データを受け取ることを�
 
 ### 17.1 基本UI
 
+**本節は初期検討時の受け入れ条件案である。共通ステータスバーおよびtkinter版併存に関する記述は、`robot_console_gui_architecture_design.md`（4章: 完全移行方針）・`robot_console_gui_screen_function_design.md`（v0.2: 共通ステータスバー廃止）により置き換えられている。**
+
 ```text
 ・PyQt5のMainWindowが起動する
 ・4タブが存在する
-・共通ステータスバーが全タブで表示される
-・既存tkinter版を壊さずに併存できる
+・共通ステータスバーは設けない
+・移行完了後はPyQt5版が唯一の正式entry pointであり、tkinter版は残さない（移行途中の一時的併存は許容）
 ```
 
 ### 17.2 ダッシュボード
@@ -1494,3 +1517,13 @@ HTML:
 ```
 
 この方針により、ローカル操作ルールを守りながら、走行中の状況把握、自己位置推定の妥当性確認、センサ状態の観測、開発時の調査性を両立する。
+
+---
+
+## 22. 改版履歴
+
+| 日付 | 版 | 変更概要 |
+| --- | --- | --- |
+| 2026-08-29 | 0.3 | 13.4節の移植フェーズに Phase 6.5「GUIデザイン・機能の確認と調整」を追加。PyQt5ローカルUIの4タブ（Phase 2〜6）が揃った時点でタブ横断の統一感・16:9スケーリング・画面間導線をまとめて確認し、Phase 2〜6の該当タブへ反映してからPhase 7（HTML遠隔観測UI）へ進む方針とした。この時点ではROS 2ノードとの実結合が未実施であることも明記した。 |
+| 2026-08-29 | 0.2 | 6章（共通ステータスバー）を廃止扱いに変更し `robot_console_gui_screen_function_design.md` を正と明記。13.3節のディレクトリ構成を `robot_console_gui_architecture_design.md` 5章に合わせて更新（`status_bar.py`/`ui_tk/` を除去）。13.4節の移植フェーズをprofile定義駆動・GPS/ypspur/simulator代替・机上確認・tkinter完全撤去の方針に合わせて更新。 |
+| （初版日付未記載） | 0.1 | UI更改の背景、運用前提、タブ構成、移植方針を初版として作成。 |

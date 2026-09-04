@@ -96,9 +96,12 @@
 | `csv_base_dir` | `string` | `""` | CSV（nodes/edges/segment）基準ディレクトリ |
 | `map_image_path` | `string` | `None` | 地図画像（PNG 等）へのパッケージ相対パス。`None` の場合は地図重畳を行わない。 |
 | `map_worldfile_path` | `string` | `None` | 上記画像に対応する Worldfile（PGW）へのパッケージ相対パス。`map_image_path` と同時指定が必要。 |
+| `route_id` | `string` | `default_route` | 応答 `Route.route_id` に設定する識別子。 |
+| `projection_config_path` | `string` | `params/default.yaml` | `geo_pose_converter` の parameter YAML。LLH/ENU 変換と `Route.projection` 生成に使う。 |
 
 > **運用**：いずれも起動時に `declare_parameter()` で宣言。空値の場合はエラーログを出す。
 > `map_*` 系は `None` を既定とし、`get_package_share_directory("route_planner")` を基点に連結して絶対パス化する。
+> LLH/ENU 変換原点、heading/yaw 変換規約、frame 名は `geo_pose_converter` が一元管理する。`route_planner` は `projection_config_path` でその YAML を参照し、node 固有の `origin_*` パラメータは持たない。
 
 ---
 
@@ -141,7 +144,10 @@
 - `edges.csv` : `source, target, segment_id, reversible[, weight_factor]`
   - `reversible` は `0/1`, `true/false`, `yes/no` を受理
   - `weight_factor` は正の数値。指定時はセグメント長へ係数を掛けた重みを使用
-- **Waypoint CSV（segment）**：`(x,y)` または `(lat,lon)` 形式のいずれかを許容。`lat` / `lon` または `latitude` / `longitude`、任意の `alt` / `altitude`、`heading` / `heading_deg` を読み取り、Route msg の LLH field へ保持する。
+- **Waypoint CSV（segment）**：LLH 系または ENU 系のどちらか一方を正本として持つ。
+  - 実コース用 LLH route: `latitude,longitude,altitude,heading_deg` または `lat,lon,alt,heading` を持つ。`latitude/longitude/heading_deg` は必須、`altitude` は任意である。現状のrouteでは高度を扱わないため `altitude` 空欄を標準とし、`tc_geo_msgs/GeoPoint.has_altitude=false` とする。`route_planner` は `geo_pose_converter.geo_core` をライブラリ import し、起動時に ENU pose と quaternion を生成する。走行用 ENU pose は2Dとして扱い、LLH高度の有無に関わらず `pose.position.z=0.0` とする。
+  - simulation / Gazebo 用 ENU route: `x,y,z,q1,q2,q3,q4` を持つ。LLH がない場合は ENU pose をそのまま走行用 route として使い、`Waypoint.has_geo_pose=false` とする。
+  - LLH と ENU が併記された場合は warning を出し、LLH を正本として使う。併記 ENU は検証対象であり、水平 0.10 m、鉛直 0.30 m、heading 1.0 deg を超える差分があれば warning を出す。
 
 ---
 

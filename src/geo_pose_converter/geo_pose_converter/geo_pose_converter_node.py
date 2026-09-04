@@ -104,7 +104,14 @@ class GeoPoseConverterNode(Node):
         # RtkStatus の受信有無で heading の有効性を判断する。
         has_heading = self.latest_status is not None
         heading = float(self.latest_status.heading_deg) if self.latest_status is not None else 0.0
-        geo_pose = make_geo_pose(header, point, heading, has_heading, self.child_frame_id)
+        geo_pose = make_geo_pose(
+            header,
+            point,
+            heading,
+            has_heading,
+            self.child_frame_id,
+            has_altitude=True,
+        )
         quality = make_geo_pose_quality(
             header,
             geo_pose,

@@ -27,8 +27,12 @@ def generate_launch_description() -> LaunchDescription:
     )
     odom_topic_arg = DeclareLaunchArgument(
         'odom_topic',
-        default_value='odom',
-        description='ypspur_node が publish する Odometry topic',
+        default_value='/ypspur_ros/odom',
+        description=(
+            'ypspur_node が publish する Odometry topic。'
+            'robot_navigator・obstacle_route_sim(Gazebo bridge)・robot_simulator が'
+            '/ypspur_ros/odom を前提としているため、既定でこれに合わせる'
+        ),
     )
     start_coordinator_arg = DeclareLaunchArgument(
         'start_coordinator',

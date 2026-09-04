@@ -42,7 +42,7 @@ setup(
     maintainer='user',
     maintainer_email='user@todo.todo',
     description='Road blockage decision node based on YOLO detections',
-    license='TODO: License declaration',
+    license='MIT',
     entry_points={
         'console_scripts': [
             'road_blockage_detector = road_blockage_detector.road_blockage_detector_node:main',
