@@ -6,6 +6,7 @@ import time
 
 import rclpy
 from rclpy.node import Node
+from tc_diagnostics import ASPECT_DEVICE, ASPECT_QUALITY, ERROR, OK, WARN, DiagnosticReporter
 from sensor_msgs.msg import Imu, NavSatFix
 from std_msgs.msg import String
 
@@ -122,15 +123,37 @@ class Um982DriverNode(Node):
         self._pub_ntrip = self.create_publisher(String, '~/ntrip_status', 10)
         self._ntrip_timer = self.create_timer(1., self._publish_ntrip_status)
 
+        # シリアル接続と補正受信は外形（topic の鮮度）に現れないため自己申告する。
+        self._diagnostics = DiagnosticReporter(self)
+        self._diagnostics.report(
+            ASPECT_DEVICE, OK, f'受信機に接続済み ({self._port})', hardware_id=self._port)
+
         self.get_logger().info(
             f'rtk_gps_um982_node up (port={self._port} baud={self._baud} '
             f'rate={self._output_rate}Hz stamp={self._stamp_source})'
         )
 
+    # NTRIP 状態ごとの診断レベルと説明。
+    _NTRIP_QUALITY = {
+        'RECEIVING': (OK, '補正を受信中'),
+        'DISABLED': (OK, 'NTRIP 無効設定'),
+        'WAITING': (WARN, '接続済み・RTCM 待ち'),
+        'CONNECTING': (WARN, '接続待ち'),
+        'RECONNECTING': (WARN, '再接続中'),
+        'STALE': (WARN, '補正が途絶'),
+        'ERROR': (ERROR, '設定エラー'),
+    }
+
     def _publish_ntrip_status(self) -> None:
+        # 配信様式: stream (1 Hz)
         data = self._ntrip_status.sample(
             self._client._ntrip_client, now=time.monotonic(), **self._ntrip_fields)
         self._pub_ntrip.publish(String(data=json.dumps(data, ensure_ascii=False, allow_nan=False)))
+        level, text = self._NTRIP_QUALITY.get(data.get('state'), (WARN, 'NTRIP 状態不明'))
+        self._diagnostics.report(
+            ASPECT_QUALITY, level, text,
+            values={'ntrip_state': data.get('state', ''),
+                    'rtcm_bytes_total': data.get('rtcm_bytes_total', 0)})
 
     def _on_position(self, pos) -> None:
         if self._relay is not None:

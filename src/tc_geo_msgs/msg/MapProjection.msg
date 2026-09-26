@@ -1,4 +1,9 @@
 # ENU/LLH projection parameters shared by route and localization components.
+#
+# 配信様式: stream (1 Hz, /geo/map_projection)／埋め込み用 (Route.projection)
+# 配信元: geo_pose_converter (geo_pose_converter_node)
+# QoS 例外: RELIABLE / depth 10。同ノードの他 publisher と同じ QoS を共用する。
+#
 
 std_msgs/Header header
 

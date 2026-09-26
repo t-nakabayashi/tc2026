@@ -9,6 +9,8 @@ Drive/CmdVel,車輪速度,/ypspur_ros/odom,nav_msgs/msg/Odometry.msg,twist.twist
 GPS/Pose,自己位置,/localization/pose_llh,tc_geo_msgs/msg/GeoPoseWithQuality.msg,pose / fix_quality / fusion_status,LLHと品質の表示
 GNSS・基地局,GNSS品質,rtk_gps/rtk_status,rtk_gps_um982_msgs/msg/RtkStatus.msg,rtk_state / num_satellites / hdop,相対名。起動側で実機private名または模擬公開名へremap
 GNSS・基地局,補正通信,rtk_gps/ntrip_status,std_msgs/msg/String.msg,data,診断JSON。模擬GNSSはDISABLEDを配信
+GNSS・基地局,融合状態,/fusion/status,tc_geo_msgs/msg/FusionState.msg,mode / yaw_rad / heading_sigma_deg / baseline_reference_m / has_estimate,型付きの融合状態
+Node Health,健全性,/diagnostics,diagnostic_msgs/msg/DiagnosticArray.msg,status,health_topicsの受信鮮度とノード別診断から合成
 Manual Ops,開始・再開,/manual_start,std_msgs/msg/Bool.msg,data,falseは走行停止指令ではない
 Manual Ops,信号判定入力,/sig_recog,std_msgs/msg/Int32.msg,data,手動入力は実トピックへ配信
 Manual Ops,封鎖判定入力,/road_blocked,std_msgs/msg/Bool.msg,data,手動入力は実トピックへ配信

@@ -269,8 +269,12 @@ ros2 run icart_bringup run_digital_twin --output log/digital_twin/session01 --st
 - [シミュレーション](src/obstacle_route_sim/README.md): 地形・センサ生成と評価
 - [検証用経路](src/route_planner/routes/tsukuba2026_digital_twin/README.md): 未測量の試験データ
 
-各パッケージのテストはルートの `pytest` に含まれる。ROS 環境とビルド済み
-`install/setup.bash` を読み込み、有効な venv で実行する。
+全体テストは `python3 scripts/run_pytest.py -v` で実行する。対象は `pytest.ini` の
+`testpaths` から取得する。ROS 環境とビルド済み `install/setup.bash` を読み込み、
+有効な venv で実行する。GUI とその他を別の Python プロセスで実行し、DDS 初期化後の
+fork による停止を避ける。各グループが600秒を超えた場合は失敗とする。
+単一パッケージは `python3 -m pytest src/<package>/tests`（robot_console は
+`src/robot_console/tools/tests`）で実行できる。
 GUI テストには Qt WebEngine と pytest-forked、地形生成には Node.js が必要。
 地理地形の生成には `src/obstacle_route_sim/tools/terrain3d` で `npm ci` も実行する。
 通常 install のツールを使う場合は、

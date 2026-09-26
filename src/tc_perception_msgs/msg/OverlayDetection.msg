@@ -1,4 +1,7 @@
 # 画像へ重畳する検出 1 件。
+#
+# 配信様式: 埋め込み用（PerceptionOverlay.detections の配列要素。単独では配信しない）
+#
 # 座標は判定根拠となった元画像のピクセル系で、中心座標と大きさで表す
 # (vision_msgs/BoundingBox2D と同じ表現)。
 

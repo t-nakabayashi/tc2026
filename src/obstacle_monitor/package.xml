@@ -9,6 +9,7 @@
   <buildtool_depend>ament_python</buildtool_depend>
 
   <depend>rclpy</depend>
+  <depend>tc_diagnostics</depend>
   <depend>sensor_msgs</depend>
   <depend>cv_bridge</depend>
   <depend>tc_route_msgs</depend>

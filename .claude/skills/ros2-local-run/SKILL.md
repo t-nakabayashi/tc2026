@@ -32,10 +32,16 @@ description: ローカル環境で ros2 run / ros2 launch / ros2 topic / ros2 se
    手順は `references/integration-check.md`。
 3. **Gazebo シミュレータを使った動作確認**: `obstacle_route_sim` で道路 world・LiDAR・
    pylon 障害物を再現し、障害物回避・ルート復帰など実センサ相当の入力が絡む挙動を確認する。
-   手順は `references/gazebo-simulation-check.md`。
+   合成 world（直線・S字・クランク）と、模擬 GNSS/LIO/融合を含むつくばチャレンジ 2026
+   デジタルツインの 2 系統がある。手順は `references/gazebo-simulation-check.md`。
 
 対応方針:
 
+- **ノードの追加、トピック契約（型・トピック名・配信様式・QoS）の変更、起動構成の変更を
+  伴う実装では、段階 3 のうち「つくばチャレンジ 2026 デジタルツイン」での結合動作確認を
+  必須とする。** 合成 world（直線・S字・クランク）での確認はこれを代替しない。合成 world は
+  `fake_localization_pose` を使い `gnss_lio_fusion` を起動しないため、自己位置・融合・診断を
+  含む結合が確認範囲から外れる。手順は `references/gazebo-simulation-check.md` を参照する。
 - 着手前に、変更内容から見てどの段階が必要かを検討し、対象パッケージ・段階・
   （2, 3 段階を行う場合は）評価条件の候補をユーザーに提示して合意を得てから実行する。
   「pytest が通ったので単体確認は不要」「route_follower の変更なので結合確認まで必要」

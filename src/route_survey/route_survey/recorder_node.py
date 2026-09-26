@@ -14,6 +14,8 @@ from sensor_msgs.msg import Joy, PointCloud2, NavSatFix
 from rtk_gps_um982_msgs.msg import RtkStatus
 from sensor_msgs_py import point_cloud2
 from std_msgs.msg import String
+from tc_diagnostics import DiagnosticReporter, report_alive
+from tc_geo_msgs.msg import FusionState
 from geo_pose_converter.geo_core import load_projection_config_from_yaml, LlhPoint, llh_to_enu
 from route_survey.trace_core import Traces, finite
 from gnss_lio_fusion.mount_core import base_from_sensor, rotation, quaternion_rotation
@@ -46,7 +48,7 @@ class Recorder(Node):
         self.directory.mkdir(parents=True, exist_ok=False)
         self.projection = load_projection_config_from_yaml(self.p['projection_config'])
         self.traces = Traces()
-        self.fusion_health = {}
+        self.fusion_state = None
         self.pose_quality = {}
         self.survey = Survey(self.p['spacing_m'], self.p['turn_deg'])
         self.poses = deque(maxlen=100)
@@ -69,8 +71,10 @@ class Recorder(Node):
         self.create_subscription(NavSatFix, self.p['gnss_fix_topic'], self.gnss_fix,
                                  qos_profile_sensor_data)
         self.create_subscription(RtkStatus, self.p['gnss_status_topic'], self.gnss_status, 10)
-        self.create_subscription(String, '/fusion/status', self.health, 10)
+        self.create_subscription(FusionState, '/fusion/status', self.health, 10)
         self.create_timer(1., self.flush)
+        self.diagnostics = DiagnosticReporter(self)
+        report_alive(self.diagnostics, '経路採取ノード稼働中')
         self.get_logger().info('経路採取待機: Joy 0開始 / 1停止 / 2信号停止 / 3終了')
 
     def now(self) -> float:
@@ -85,9 +89,10 @@ class Recorder(Node):
         if not math.isfinite(variance) or variance < 0:
             return
         yaw = math.atan2(2*(q.w*q.z+q.x*q.y), 1-2*(q.y*q.y+q.z*q.z))
-        health = (self.fusion_health if abs(stamp(message)-
-                  self.fusion_health.get('sim_s', -1e9)) <= .5 else {})
-        self.pose_quality = dict(position_variance=variance, mode=health.get('mode', 'UNKNOWN'),
+        state = self.fusion_state
+        fresh = state is not None and abs(stamp(message)-state.estimate_stamp_s) <= .5
+        self.pose_quality = dict(position_variance=variance,
+                                 mode=state.mode if fresh else 'UNKNOWN',
                                  uncertain=variance > self.p['max_pose_variance'])
         self.traces.append('fused', dict(stamp=stamp(message), x=finite(p.x), y=finite(p.y),
                                        yaw=finite(yaw), **self.pose_quality))
@@ -96,21 +101,24 @@ class Recorder(Node):
             self.poses.append(value)
             self.last_pose_receive = self.now()
 
-    def health(self, message) -> None:
-        import json
-        try:
-            value = json.loads(message.data)
-            if isinstance(value, dict):
-                if value.get('mode') == 'WAIT_GRAVITY_ALIGNMENT':
-                    self.poses.clear()
-                    self.attitudes.clear()
-                    self.surface_window.clear()
-                    self.last_surface_compute = -math.inf
-                    self.cloud_stamp = -math.inf
-                    self.last_pose_receive = -math.inf
-                self.fusion_health = value
-        except (ValueError, TypeError):
-            pass
+    def health(self, message: FusionState) -> None:
+        """融合状態を保持する。水平基準の再確定中は採取済みデータを破棄する。
+
+        水平基準が未確定の間に積んだ姿勢・点群は基準がずれているため、
+        そのまま経路として保存すると誤った軌跡になる。
+
+        Args:
+            message (FusionState): `/fusion/status` の受信メッセージ.
+        """
+
+        if message.mode == FusionState.MODE_WAIT_GRAVITY_ALIGNMENT:
+            self.poses.clear()
+            self.attitudes.clear()
+            self.surface_window.clear()
+            self.last_surface_compute = -math.inf
+            self.cloud_stamp = -math.inf
+            self.last_pose_receive = -math.inf
+        self.fusion_state = message
 
     def gnss_status(self, message) -> None:
         self.traces.append('statuses', dict(stamp=stamp(message), state=int(message.rtk_state),

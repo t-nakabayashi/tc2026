@@ -1,4 +1,9 @@
-builtin_interfaces/Time stamp
+# 自律・手動の切替状態と、最終的に出力された速度指令の由来を通知する。
+#
+# 配信様式: stream (20 Hz, drive_cmd_mux_node の publish_rate_hz)
+# 配信元: drive_mode_manager (drive_cmd_mux_node)
+
+std_msgs/Header header
 
 uint8 MODE_AUTONOMOUS=1
 uint8 MODE_MANUAL=2

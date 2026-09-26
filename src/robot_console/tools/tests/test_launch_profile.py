@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from ament_index_python.packages import get_package_share_directory
 
 from robot_console.core.launch_profile import (
@@ -50,10 +52,15 @@ def test_rtk_gps_um982_matches_architecture_design_example():
     assert profile.launch_file == 'rtk_gps_um982.launch.py'
     assert profile.param_argument == 'config'
     assert profile.launch_order == 20
-    assert profile.health_topics == [
+    assert [topic.topic for topic in profile.health_topics] == [
         '/rtk_gps/fix',
         '/rtk_gps/heading',
         '/rtk_gps/rtk_status',
+    ]
+    assert [topic.type for topic in profile.health_topics] == [
+        'sensor_msgs/msg/NavSatFix',
+        'sensor_msgs/msg/Imu',
+        'rtk_gps_um982_msgs/msg/RtkStatus',
     ]
 
 
@@ -151,6 +158,65 @@ def test_health_topics_must_be_a_list(tmp_path: Path):
 
     assert profiles == []
     assert any('health_topics' in message for message in store.validation_errors)
+
+
+def _profile_yaml(health_topics: str) -> str:
+    return (
+        "profiles:\n"
+        "  - profile_id: broken\n"
+        "    category: route_stack\n"
+        "    display_name: Broken\n"
+        "    package: route_manager\n"
+        "    launch_file: route_manager.launch.py\n"
+        + health_topics
+    )
+
+
+@pytest.mark.parametrize('health_topics', [
+    # topic / type / rate_hz のいずれかが欠けている
+    "    health_topics:\n      - topic: /route_state\n",
+    "    health_topics:\n      - topic: /route_state\n        type: tc_route_msgs/msg/RouteState\n",
+    "    health_topics:\n      - type: tc_route_msgs/msg/RouteState\n        rate_hz: 1.0\n",
+    # 旧スキーマ（文字列の並び）は受け付けない
+    "    health_topics:\n      - /route_state\n",
+    # rate_hz が正の有限値でない
+    "    health_topics:\n      - topic: /t\n        type: a/msg/B\n        rate_hz: 0\n",
+    "    health_topics:\n      - topic: /t\n        type: a/msg/B\n        rate_hz: -1.0\n",
+    "    health_topics:\n      - topic: /t\n        type: a/msg/B\n        rate_hz: .inf\n",
+    "    health_topics:\n      - topic: /t\n        type: a/msg/B\n        rate_hz: x\n",
+    # type が <package>/msg/<Name> 形式でない
+    "    health_topics:\n      - topic: /t\n        type: RouteState\n        rate_hz: 1.0\n",
+    "    health_topics:\n      - topic: /t\n"
+    "        type: tc_route_msgs/RouteState\n        rate_hz: 1.0\n",
+])
+def test_invalid_health_topic_entries_are_rejected(tmp_path: Path, health_topics: str):
+    """スキーマ違反は起動前に検出する。実行時に購読を作れず誤判定になるため."""
+
+    path = tmp_path / 'profiles.yaml'
+    path.write_text(_profile_yaml(health_topics), encoding='utf-8')
+    store = LaunchProfileStore(path)
+
+    assert store.load() == []
+    assert any('health_topics' in message for message in store.validation_errors)
+
+
+def test_repository_profiles_only_use_stream_topics_for_health():
+    """latch配信のtopicは、更新が無いことが正常なため死活監視に使えない."""
+
+    store = LaunchProfileStore(REPO_PROFILE_PATH)
+    latched = {'/active_route', '/mission_info'}
+    for profile in store.load():
+        registered = {topic.topic for topic in profile.health_topics}
+        assert not registered & latched, profile.profile_id
+
+
+def test_repository_profiles_declare_diagnostic_nodes_for_own_packages():
+    """自作ノードを起動するprofileは、診断の突き合わせ先を宣言している."""
+
+    store = LaunchProfileStore(REPO_PROFILE_PATH)
+    profiles = {profile.profile_id: profile for profile in store.load()}
+    for profile_id in ('route_manager', 'route_follower', 'rtk_gps_um982', 'obstacle_monitor'):
+        assert profiles[profile_id].diagnostic_nodes, profile_id
 
 
 def test_top_level_must_have_profiles_list(tmp_path: Path):
@@ -377,7 +443,9 @@ def test_ypspur_health_topic_matches_its_publish_topic():
     store = LaunchProfileStore(REPO_PROFILE_PATH)
     profile = {p.profile_id: p for p in store.load()}['ypspur_ros2']
 
-    assert profile.default_arguments['odom_topic'] in profile.health_topics
+    assert profile.default_arguments['odom_topic'] in [
+        topic.topic for topic in profile.health_topics
+    ]
 
 
 def test_real_wheel_ui_launch_starts_coordinator_and_uses_mux_output():

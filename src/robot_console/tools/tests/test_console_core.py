@@ -1,7 +1,10 @@
 """ConsoleCore（ROS非依存の状態集約Facade）の単体テスト。"""
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from robot_console.core.console_core import ConsoleCore
 from robot_console.core.freshness import FreshnessLevel
@@ -47,7 +50,89 @@ def test_launch_status_callback_updates_health_and_launch_profiles():
     assert snapshot.launch_profiles[profile_id].status == NodeLaunchStatus.RUNNING
     assert snapshot.launch_profiles[profile_id].process_id == 4242
     health = next(item for item in snapshot.health if item.profile_id == profile_id)
+    # 起動直後はhealth_topicsがまだ流れていないことが正常であり、猶予期間内は
+    # 異常と判定しない（docs/ノード健全性監視設計.md 3.6節）。
+    assert health.status == 'STARTING'
+
+
+def test_health_reflects_topic_reception_not_only_the_process():
+    """プロセス稼働だけでなく、health_topicsの受信で RUNNING を判定する."""
+
+    core = _make_core()
+    profile = core._profiles[0]
+    core._on_launch_status(profile.profile_id, NodeLaunchStatus.RUNNING, 4242, None)
+
+    for health_topic in profile.health_topics:
+        core.mark_health_topic_received(health_topic.topic)
+    health = next(
+        item for item in core.build_snapshot().health if item.profile_id == profile.profile_id
+    )
     assert health.status == 'RUNNING'
+    assert health.health == FreshnessLevel.OK
+    assert not health.externally_started
+
+
+def test_partial_topic_loss_is_kept_visible_as_a_warning():
+    """一部のtopicだけ途絶えた部分故障を、全滅と同じ扱いにしない."""
+
+    core = _make_core()
+    profile = core._profiles[0]
+    assert len(profile.health_topics) > 1
+    core._on_launch_status(profile.profile_id, NodeLaunchStatus.RUNNING, 1, None)
+
+    core.mark_health_topic_received(profile.health_topics[0].topic)
+    health = next(
+        item for item in core.build_snapshot().health if item.profile_id == profile.profile_id
+    )
+    assert health.status == 'RUNNING'
+    assert health.health == FreshnessLevel.STALE
+
+
+def test_externally_started_profile_is_detected_from_topics_alone():
+    """GUI外で起動されたノードを、topic受信だけで稼働中と判定する."""
+
+    core = _make_core()
+    profile = core._profiles[0]
+    for health_topic in profile.health_topics:
+        core.mark_health_topic_received(health_topic.topic)
+
+    health = next(
+        item for item in core.build_snapshot().health if item.profile_id == profile.profile_id
+    )
+    assert health.status == 'RUNNING'
+    assert health.externally_started
+
+
+def test_diagnostic_error_overrides_a_healthy_looking_profile():
+    """topicは流れていても、ノード自身がERRORを申告すれば異常として表示する."""
+
+    core = _make_core()
+    profile = next(p for p in core._profiles if p.diagnostic_nodes and p.health_topics)
+    core._on_launch_status(profile.profile_id, NodeLaunchStatus.RUNNING, 1, None)
+    for health_topic in profile.health_topics:
+        core.mark_health_topic_received(health_topic.topic)
+
+    node_name = profile.diagnostic_nodes[0]
+    core.update_diagnostics(SimpleNamespace(status=[
+        SimpleNamespace(name=f'{node_name}/device', level=b'\x02', message='受信機未接続'),
+    ]))
+    health = next(
+        item for item in core.build_snapshot().health if item.profile_id == profile.profile_id
+    )
+    assert health.status == 'ERROR'
+    assert health.diagnostic_message == '受信機未接続'
+
+
+def test_diagnostics_with_invalid_names_are_discarded():
+    """name規約に合わない診断はprofileと対応付けられないため破棄する."""
+
+    core = _make_core()
+    core.update_diagnostics(SimpleNamespace(status=[
+        SimpleNamespace(name='no_aspect', level=b'\x02', message='x'),
+        SimpleNamespace(name='a/b/c', level=b'\x02', message='y'),
+        SimpleNamespace(name='/liveness', level=b'\x02', message='z'),
+    ]))
+    assert core._diagnostics == {}
 
 
 def test_launch_status_callback_handles_simulator_suffix_separately():
@@ -723,3 +808,85 @@ def test_survey_rejects_external_driver(monkeypatch):
     core.request_launch('icart_real_survey')
     assert not calls
     assert 'ypspur_node' in core._launch_states['icart_real_survey'].error_message
+
+
+def _health(core, profile_id):
+    return next(item for item in core.build_snapshot().health if item.profile_id == profile_id)
+
+
+def _diagnostic(node, aspect='liveness', level=0):
+    return SimpleNamespace(name=f'{node}/{aspect}', level=level, message=f'{aspect}:{level}')
+
+
+def test_follower_health_is_ok_between_target_resends_and_without_target():
+    """目標は停止・未計画時に無音となる。周期状態だけで稼働を監視する。"""
+    core = _make_core()
+    core.mark_health_topic_received('/follower_state')
+    assert _health(core, 'route_follower').health == FreshnessLevel.OK
+    core.freshness.mark_received('/active_target',
+        datetime.now(timezone.utc) - timedelta(seconds=.75))
+    assert _health(core, 'route_follower').health == FreshnessLevel.OK
+
+
+@pytest.mark.parametrize('name', ['road_blockage_detector', 'traffic_signal_recognizer'])
+def test_diagnostic_only_external_node_expires_and_recovers(monkeypatch, name):
+    now = [100.0]
+    monkeypatch.setattr('robot_console.core.console_core.time.monotonic', lambda: now[0])
+    core = _make_core()
+    core.update_diagnostics(SimpleNamespace(status=[_diagnostic(name)]))
+    for age, status, freshness in [(0., 'RUNNING', FreshnessLevel.OK),
+                                   (3., 'RUNNING', FreshnessLevel.OK),
+                                   (3.01, 'RUNNING', FreshnessLevel.STALE),
+                                   (10., 'RUNNING', FreshnessLevel.STALE),
+                                   (10.01, 'STOPPED', FreshnessLevel.UNKNOWN)]:
+        now[0] = 100. + age
+        health = _health(core, name)
+        assert (health.status, health.health) == (status, freshness)
+        assert health.externally_started == (status == 'RUNNING')
+        if status == 'STOPPED':
+            assert health.diagnostic_message == ''
+    core.update_diagnostics(SimpleNamespace(status=[_diagnostic(name)]))
+    assert _health(core, name).health == FreshnessLevel.OK
+
+
+def test_managed_diagnostic_only_node_has_grace_then_detects_silence(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr('robot_console.core.console_core.time.monotonic', lambda: now[0])
+    core = _make_core()
+    name = 'traffic_signal_recognizer'
+    core._on_launch_status(name, NodeLaunchStatus.RUNNING, 123, None)
+    assert _health(core, name).status == 'STARTING'
+    now[0] += 10.01
+    assert _health(core, name).status == 'ERROR'
+    core.update_diagnostics(SimpleNamespace(status=[_diagnostic(name)]))
+    assert _health(core, name).health == FreshnessLevel.OK
+    now[0] += 10.01
+    assert _health(core, name).health == FreshnessLevel.LOST
+
+
+def test_diagnostic_snapshot_removes_cleared_aspects_without_erasing_other_nodes():
+    core = _make_core()
+    core.mark_health_topic_received('/follower_state')
+    core.update_diagnostics(SimpleNamespace(status=[
+        _diagnostic('route_follower'), _diagnostic('route_follower', 'quality', 2),
+        _diagnostic('traffic_signal_recognizer'),
+    ]))
+    assert _health(core, 'route_follower').status == 'ERROR'
+    core.update_diagnostics(SimpleNamespace(status=[_diagnostic('route_follower')]))
+    assert _health(core, 'route_follower').health == FreshnessLevel.OK
+    assert _health(core, 'traffic_signal_recognizer').externally_started
+    assert 'route_follower/quality' not in core._diagnostics
+
+
+def test_last_diagnostic_expires_even_if_no_replacement_array_arrives(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr('robot_console.core.console_core.time.monotonic', lambda: now[0])
+    core = _make_core()
+    core.mark_health_topic_received('/follower_state')
+    core.update_diagnostics(SimpleNamespace(status=[_diagnostic('route_follower', 'quality', 2)]))
+    assert _health(core, 'route_follower').status == 'ERROR'
+    core.update_diagnostics(SimpleNamespace(status=[]))
+    now[0] += 10.01
+    health = _health(core, 'route_follower')
+    assert health.health == FreshnessLevel.OK
+    assert health.diagnostic_message == ''

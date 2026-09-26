@@ -14,14 +14,16 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 import rclpy
+from diagnostic_msgs.msg import DiagnosticArray
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from rosidl_runtime_py.utilities import get_message
 from rtk_gps_um982_msgs.msg import RtkStatus
 from sensor_msgs.msg import Image as ImageMsg
 from std_msgs.msg import Bool, Int32, String
-from tc_geo_msgs.msg import GeoPoseWithQuality
+from tc_geo_msgs.msg import FusionState, GeoPoseWithQuality
 from tc_perception_msgs.msg import PerceptionOverlay
 from tc_route_msgs.msg import (
     ActiveTargetLlh,
@@ -126,6 +128,16 @@ _QOS_IMAGE = QoSProfile(
     depth=1,
 )
 
+# 健全性監視用の購読QoS。配信様式 stream の既定であり、BEST_EFFORT購読は
+# RELIABLE配信元とも互換なため、配信側の設定を調べずに接続が成立する
+# （docs/トピック通信規約.md 4.1節）。
+_QOS_HEALTH = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    durability=DurabilityPolicy.VOLATILE,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=1,
+)
+
 
 class RobotConsoleNode(Node):
     """ROS 2 topicを購読し `ConsoleCore` へ橋渡しするだけのNode。"""
@@ -143,7 +155,9 @@ class RobotConsoleNode(Node):
         # `gnss_namespace` に応じてremapするため、ここでは相対名で購読する。
         self.create_subscription(String, 'rtk_gps/ntrip_status', core.update_ntrip_status, 10)
         self.create_subscription(Bool, '/fusion/gnss_dropout_active', self._core.update_gnss_dropout, 10)
-        self.create_subscription(String, '/fusion/status', self._core.update_fusion_status, 10)
+        self.create_subscription(
+            FusionState, '/fusion/status', self._core.update_fusion_status, 10
+        )
 
         self.create_subscription(RouteState, 'route_state', self._core.update_route_state, 10)
         self.create_subscription(
@@ -236,6 +250,11 @@ class RobotConsoleNode(Node):
             _QOS_IMAGE,
         )
 
+        self.create_subscription(
+            DiagnosticArray, '/diagnostics', core.update_diagnostics, _QOS_HEALTH
+        )
+        self._subscribe_health_topics(core)
+
         # 先頭にスラッシュを付けないことで launch からの remap を可能にする。
         self._manual_pub = self.create_publisher(Bool, 'manual_start', 10)
         self._sig_pub = self.create_publisher(Int32, 'sig_recog', 10)
@@ -259,6 +278,41 @@ class RobotConsoleNode(Node):
             ),
             frame_image=lambda path: self._frame_image_path_pub.publish(String(data=path)),
         )
+
+
+    def _subscribe_health_topics(self, core: ConsoleCore) -> None:
+        """`health_topics` を健全性判定専用に購読する。
+
+        内容は解釈せず受信事実だけを記録するため `raw=True` で購読し、
+        デシリアライズを回避する。`/scan` のような高レートtopicでも負荷を
+        無視できる（`docs/ノード健全性監視設計.md` 3.4節）。
+
+        表示のために既に購読しているtopicにも、健全性用の購読を別に張る。
+        表示側の購読は remap 対象の相対名で、鮮度キーも表示都合の名前
+        （`obstacle_hint`、`image.sensor_viewer` など）であり、profile定義の
+        絶対topic名とは一対一に対応しないためである。購読を共用するには
+        表示側の全経路に健全性キーの記録を追加する必要があり、記録漏れが
+        そのまま誤った異常判定になる。重複する購読は raw・BEST_EFFORT・
+        depth 1 であり、コストよりも判定の確実性を優先する。
+        """
+
+        for health_topic in core.health_topic_definitions():
+            try:
+                message_type = get_message(health_topic.type)
+            except (AttributeError, ModuleNotFoundError, ValueError) as exc:
+                # 型を解決できないtopicは購読を作れない。起動は継続し、当該topicは
+                # 未受信（UNKNOWN）のまま扱う。
+                self.get_logger().error(
+                    f'health_topic の型を解決できません: {health_topic.type} ({exc})'
+                )
+                continue
+            self.create_subscription(
+                message_type,
+                health_topic.topic,
+                lambda _raw, topic=health_topic.topic: core.mark_health_topic_received(topic),
+                _QOS_HEALTH,
+                raw=True,
+            )
 
 
 @dataclass

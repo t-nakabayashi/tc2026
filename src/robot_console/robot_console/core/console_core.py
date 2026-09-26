@@ -47,6 +47,9 @@ from .localization_adapter import (
 )
 from .log_manager import LogManager
 from .metrics import euclidean_distance
+from .node_health import (
+    DiagnosticEntry, build_summary, diagnostic_freshness, select_diagnostics, within_grace,
+)
 from .operation_phase import build_operation_state
 from .route_adapter import (
     apply_active_target_llh_msg,
@@ -74,14 +77,6 @@ from .snapshot_model import (
     RouteView,
     TargetView,
 )
-
-_LAUNCH_STATUS_TO_HEALTH: Dict[NodeLaunchStatus, FreshnessLevel] = {
-    NodeLaunchStatus.RUNNING: FreshnessLevel.OK,
-    NodeLaunchStatus.STARTING: FreshnessLevel.STALE,
-    NodeLaunchStatus.STOPPING: FreshnessLevel.STALE,
-    NodeLaunchStatus.STOPPED: FreshnessLevel.UNKNOWN,
-    NodeLaunchStatus.ERROR: FreshnessLevel.LOST,
-}
 
 _SIMULATOR_SUFFIX = ':sim'
 
@@ -126,6 +121,16 @@ class ConsoleCore:
         self.log_manager = LogManager(profile_ids=[p.profile_id for p in self._profiles])
         self.image_store = ImageStore()
         self.freshness = FreshnessMonitor()
+        # health_topics の鮮度しきい値は公称レートから導出する
+        # （docs/トピック通信規約.md 3章）。profile定義側にしきい値は書かない。
+        for profile in self._profiles:
+            for health_topic in profile.health_topics:
+                stale_sec, lost_sec = health_topic.thresholds()
+                self.freshness.set_threshold(health_topic.freshness_key, stale_sec, lost_sec)
+        # `<ノード名>/<観点>` をキーとする自己申告診断。
+        self._diagnostics: Dict[str, DiagnosticEntry] = {}
+        # profileごとの起動要求時刻 [monotonic 秒]。起動猶予の判定に使う。
+        self._launch_requested_at: Dict[str, float] = {}
         # 認識ノードは重畳画像を配信しないため、生画像への描画は本Coreが行う。
         # Qt UI / HTML UI が同一の描画結果を共有できるよう実装を1つに保つ。
         self.camera_overlay = CameraOverlayRenderer()
@@ -492,6 +497,15 @@ class ConsoleCore:
                 state.simulator_status = status
                 state.simulator_process_id = process_id
             else:
+                # 起動猶予は「停止状態から起動へ移った時刻」から数える。起動直後は
+                # まだtopicが流れていないことが正常であり、異常と判定しない。
+                starting = status in (NodeLaunchStatus.STARTING, NodeLaunchStatus.RUNNING)
+                if starting and state.status not in (
+                    NodeLaunchStatus.STARTING, NodeLaunchStatus.RUNNING
+                ):
+                    self._launch_requested_at[profile_id] = time.monotonic()
+                elif not starting:
+                    self._launch_requested_at.pop(profile_id, None)
                 state.status = status
                 state.process_id = process_id
             if error_message:
@@ -503,6 +517,73 @@ class ConsoleCore:
         """`LaunchManager` からのログ行を`LogManager`へ転送する。"""
 
         self.log_manager.append(status_id, line)
+
+    # ---------- 健全性（ros/console_node.pyから呼ばれる） ----------
+    def health_topic_definitions(self) -> List[Any]:
+        """全profileの `health_topics` を重複なく返す。
+
+        同じtopicを複数のprofileが監視対象にしている場合でも購読は1本にする。
+        鮮度キーはtopic名そのものであり、profile間で共用できる。
+
+        Returns:
+            List[Any]: `HealthTopic` の一覧.
+        """
+
+        unique: Dict[str, Any] = {}
+        for profile in self._profiles:
+            for health_topic in profile.health_topics:
+                unique.setdefault(health_topic.topic, health_topic)
+        return list(unique.values())
+
+    def mark_health_topic_received(self, topic: str) -> None:
+        """健全性監視用topicの受信を記録する。
+
+        内容は解釈しない。`raw=True` の購読からバイト列のまま呼ばれる
+        （`docs/ノード健全性監視設計.md` 3.4節）。
+
+        Args:
+            topic (str): 受信したtopic名.
+        """
+
+        self.freshness.mark_received(topic)
+
+    def update_diagnostics(self, msg: Any) -> None:
+        """`diagnostic_msgs/DiagnosticArray`（`/diagnostics`）を反映する。
+
+        `DiagnosticStatus.name` は `<ノード名>/<観点>` 形式を前提とする。規約外の
+        name は profile と対応付けられないため破棄する。
+
+        Args:
+            msg (Any): 受信した `DiagnosticArray` 相当のメッセージ.
+        """
+
+        entries: Dict[str, DiagnosticEntry] = {}
+        received_at = time.monotonic()
+        for status in msg.status:
+            name = str(status.name)
+            if name.count('/') != 1:
+                continue
+            node_name, aspect = name.split('/')
+            if not node_name or not aspect:
+                continue
+            # level は ROS の byte 型（長さ1のbytes）で届く。int へ正規化する。
+            level = status.level
+            level = level[0] if isinstance(level, (bytes, bytearray)) else int(level)
+            entries[name] = DiagnosticEntry(
+                node_name=node_name, aspect=aspect, level=level, message=str(status.message),
+                received_at=received_at,
+            )
+        if not entries:
+            return
+        with self._lock:
+            # 各配信元はそのノードの全観点を1配列で送る。他ノードの申告を残し、
+            # この配列に登場したノードの取り下げ済み観点だけを削除する。
+            updated_nodes = {entry.node_name for entry in entries.values()}
+            self._diagnostics = {
+                name: entry for name, entry in self._diagnostics.items()
+                if entry.node_name not in updated_nodes
+            }
+            self._diagnostics.update(entries)
 
     # ---------- ROSメッセージ反映（ros/console_node.pyから呼ばれる） ----------
     def update_route_state(self, msg: Any) -> None:
@@ -677,23 +758,23 @@ class ConsoleCore:
         self.freshness.mark_received('gnss_dropout')
 
     def update_fusion_status(self, msg: Any) -> None:
-        """融合JSONを表示専用Viewへ変換する。不正値でGUIを終了させない。"""
-        try:
-            data = json.loads(msg.data)
-            baseline = float(data['baseline']['reference_m'])
-            if not math.isfinite(baseline):
-                return
-            if data['mode'] in ('WAIT_INITIAL_FIX', 'WAIT_GRAVITY_ALIGNMENT'):
-                yaw, sigma = None, None
-            else:
-                yaw = math.degrees(float(data['yaw']))
-                sigma = float(data['heading_sigma_deg'])
-                if not all(math.isfinite(v) for v in [yaw, sigma]) or sigma < 0:
-                    return
-            view = FusionStateView(mode=str(data['mode']), yaw_deg=yaw,
-                                   heading_sigma_deg=sigma, baseline_m=baseline)
-        except (ValueError, TypeError, KeyError, AttributeError):
+        """`tc_geo_msgs/FusionState`（`/fusion/status`）を表示専用Viewへ変換する。
+
+        非有限値はグラフ・数値表示を壊すため、該当フィールドのみ未確定として扱う。
+        """
+
+        baseline = float(msg.baseline_reference_m)
+        if not math.isfinite(baseline):
             return
+        yaw: Optional[float] = None
+        sigma: Optional[float] = None
+        if msg.has_estimate:
+            yaw = math.degrees(float(msg.yaw_rad))
+            sigma = float(msg.heading_sigma_deg)
+            if not all(math.isfinite(value) for value in (yaw, sigma)) or sigma < 0:
+                yaw, sigma = None, None
+        view = FusionStateView(mode=str(msg.mode), yaw_deg=yaw,
+                               heading_sigma_deg=sigma, baseline_m=baseline)
         with self._lock:
             self._fusion_state = view
         self.freshness.mark_received('fusion')
@@ -882,7 +963,7 @@ class ConsoleCore:
             launch_profiles=launch_profiles,
             logs=self.log_manager.snapshot_all(),
             log_paths=log_paths,
-            health=self._build_health_summaries(launch_profiles),
+            health=self._build_health_summaries(launch_profiles, now),
         )
 
     # Eventカードの `topic lost` 判定対象。走行判断に直結し、途絶に気付かないと
@@ -914,21 +995,50 @@ class ConsoleCore:
         return lost
 
     def _build_health_summaries(
-        self, launch_profiles: Dict[str, LaunchProfileState]
+        self, launch_profiles: Dict[str, LaunchProfileState], now: datetime
     ) -> List[HealthSummaryView]:
+        """profileごとの健全性を、起動状態・トピック鮮度・診断から合成する。
+
+        合成規則は `core/node_health.py`（`docs/ノード健全性監視設計.md` 4章）に
+        置き、本メソッドは入力の収集と `HealthSummaryView` への詰め替えだけを行う。
+        """
+
+        with self._lock:
+            diagnostics = dict(self._diagnostics)
+            requested_at = dict(self._launch_requested_at)
+        monotonic_now = time.monotonic()
+
         summaries: List[HealthSummaryView] = []
         for profile in self._profiles:
             state = launch_profiles.get(profile.profile_id)
             if state is None:
                 continue
-            status_name = 'STOPPED' if state.status == NodeLaunchStatus.STOPPING else state.status.name
+            topic_levels = [
+                self.freshness.evaluate(health_topic.freshness_key, now=now)
+                for health_topic in profile.health_topics
+            ]
+            result = build_summary(
+                launch_status=state.status,
+                topic_levels=topic_levels,
+                diagnostics=select_diagnostics(
+                    diagnostics, profile.diagnostic_nodes, now=monotonic_now
+                ),
+                diagnostic_levels=diagnostic_freshness(
+                    list(diagnostics.values()), profile.diagnostic_nodes, now=monotonic_now
+                ),
+                within_startup_grace=within_grace(
+                    requested_at.get(profile.profile_id), monotonic_now
+                ),
+            )
             summaries.append(
                 HealthSummaryView(
                     profile_id=profile.profile_id,
                     category=profile.category,
-                    status=status_name,
-                    health=_LAUNCH_STATUS_TO_HEALTH.get(state.status, FreshnessLevel.UNKNOWN),
+                    status=result['status'],
+                    health=result['health'],
                     required_but_not_selected=False,
+                    externally_started=result['externally_started'],
+                    diagnostic_message=result['diagnostic_message'],
                 )
             )
         return summaries

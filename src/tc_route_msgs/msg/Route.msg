@@ -4,6 +4,11 @@
 # - route_image は経路可視化の埋込画像（encoding: "bgr8" 推奨）。
 # - projection は pose と geo_pose の対応関係を示す。
 # - waypoints は index 順で格納する（0..N-1）。
+#
+# 配信様式: latch
+# 配信元: route_manager
+# 備考: 後発の購読者へ最新ルートを届けるため TRANSIENT_LOCAL で配信する。
+#       更新が無い間は配信されないため、死活監視には使わない。
 
 std_msgs/Header header
 int32 version

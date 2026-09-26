@@ -23,6 +23,7 @@ from typing import Dict, Optional, Tuple
 
 import rclpy
 from rclpy.node import Node
+from tc_diagnostics import DiagnosticReporter, report_alive
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from rclpy.qos import qos_profile_sensor_data
 from rcl_interfaces.msg import ParameterDescriptor
@@ -258,6 +259,10 @@ class RobotNavigator(Node):
             self.get_logger().info(f'障害物距離ソース: {self.scan_topic_name}')
         else:
             self.get_logger().info(f'障害物距離ソース: {self.hint_topic_name}')
+
+        # 自己申告診断。生存はreporterのタイマーが回ることで表される。
+        self._diagnostics = DiagnosticReporter(self)
+        report_alive(self._diagnostics)
 
         # --- 制御タイマー ---
         self.timer = self.create_timer(self.dt, self.on_timer)

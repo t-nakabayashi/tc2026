@@ -2,6 +2,9 @@
 
 `stale_sec` / `lost_sec` の閾値をキー（topic名やprofile_idなど）ごとに設定できる
 ようにし、UI側は判定結果 (`FreshnessLevel`) だけを参照する。
+
+`health_topics` の閾値は、profile定義の公称レートから `ConsoleCore` が導出して
+`set_threshold()` で登録する（`docs/トピック通信規約.md` 3章）。
 """
 
 from __future__ import annotations
@@ -10,7 +13,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Dict, Mapping, Optional
+from typing import Dict, Optional
 
 DEFAULT_STALE_SEC = 1.0
 DEFAULT_LOST_SEC = 3.0
@@ -50,37 +53,6 @@ class FreshnessMonitor:
         self._thresholds: Dict[str, FreshnessThresholds] = {}
         self._last_received: Dict[str, datetime] = {}
         self._lock = threading.Lock()
-
-    @classmethod
-    def from_config(
-        cls,
-        config: Mapping[str, object],
-        *,
-        default_prefix: str = 'freshness.default',
-    ) -> 'FreshnessMonitor':
-        """``freshness.<key>.stale_sec`` / ``lost_sec`` 形式の設定辞書から生成する。
-
-        `config` はドット区切りキーのフラット辞書（例:
-        ``{'freshness.default.stale_sec': 1.0, 'freshness.gps.status.stale_sec': 3.0,
-        'freshness.gps.status.lost_sec': 10.0}``）を想定する。
-        """
-
-        default_stale = float(config.get(f'{default_prefix}.stale_sec', DEFAULT_STALE_SEC))
-        default_lost = float(config.get(f'{default_prefix}.lost_sec', DEFAULT_LOST_SEC))
-        monitor = cls(default_stale_sec=default_stale, default_lost_sec=default_lost)
-
-        stale_suffix = '.stale_sec'
-        for key, value in config.items():
-            if not key.startswith('freshness.') or not key.endswith(stale_suffix):
-                continue
-            target_key = key[len('freshness.'):-len(stale_suffix)]
-            if target_key == 'default':
-                continue
-            lost_key = f'freshness.{target_key}.lost_sec'
-            if lost_key not in config:
-                continue
-            monitor.set_threshold(target_key, float(value), float(config[lost_key]))
-        return monitor
 
     def set_threshold(self, key: str, stale_sec: float, lost_sec: float) -> None:
         """指定キーの閾値を設定する。"""

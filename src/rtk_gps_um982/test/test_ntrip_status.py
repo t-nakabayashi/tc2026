@@ -1,4 +1,7 @@
 from types import SimpleNamespace
+
+from tc_diagnostics import OK
+
 from rtk_gps_um982.ntrip_status import NtripStatus
 
 
@@ -27,10 +30,15 @@ def test_connection_and_crc_data_are_distinct_and_credentials_absent():
 def test_driver_heartbeat_does_not_require_position_callback():
     import json
     from rtk_gps_um982.driver_node import Um982DriverNode
-    messages = []
+    messages, reports = [], []
     driver = SimpleNamespace(_client=SimpleNamespace(_ntrip_client=None),
         _ntrip_status=NtripStatus(),
         _ntrip_fields=dict(enabled=False, host='', port=2101, mountpoint=''),
-        _pub_ntrip=SimpleNamespace(publish=messages.append))
+        _pub_ntrip=SimpleNamespace(publish=messages.append),
+        _NTRIP_QUALITY=Um982DriverNode._NTRIP_QUALITY,
+        _diagnostics=SimpleNamespace(
+            report=lambda aspect, level, text, values=None: reports.append((aspect, level, text))))
     Um982DriverNode._publish_ntrip_status(driver)
     assert json.loads(messages[0].data)['state'] == 'DISABLED'
+    # NTRIP 無効は設定どおりの状態であり、異常として申告しない。
+    assert reports == [('quality', OK, 'NTRIP 無効設定')]

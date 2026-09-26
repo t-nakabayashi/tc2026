@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 import rclpy
 from rclpy.node import Node
+from tc_diagnostics import DiagnosticReporter, report_alive
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
 from builtin_interfaces.msg import Time
@@ -125,6 +126,9 @@ class RouteFollowerNode(Node):
         self.core.start_immediately = self.start_immediately
         self.core.avoid_back_offset_m = avoid_back_offset
         self.core.road_blocked_confirmation_sec = road_blocked_confirmation
+        # 自己申告診断。生存はreporterのタイマーが回ることで表される。
+        self._diagnostics = DiagnosticReporter(self)
+        report_alive(self._diagnostics)
         self.get_logger().info("route_follower_node started.")
 
         # QoS設定

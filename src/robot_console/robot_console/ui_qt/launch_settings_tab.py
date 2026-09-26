@@ -535,7 +535,13 @@ class LaunchSettingsTab(QtWidgets.QWidget):
         lines.append('  ' + ' '.join(args))
         if profile.health_topics:
             lines.append('Health:')
-            lines.extend(f'  {topic}' for topic in profile.health_topics)
+            lines.extend(
+                f'  {topic.topic} ({topic.type} @ {topic.rate_hz:g} Hz)'
+                for topic in profile.health_topics
+            )
+        if profile.diagnostic_nodes:
+            lines.append('Diagnostics:')
+            lines.extend(f'  {name}' for name in profile.diagnostic_nodes)
         self._preview_text.setPlainText('\n'.join(lines))
 
     # ---------- 外部公開API ----------

@@ -10,6 +10,24 @@ start・goal label）、`robot_console` からの結合確認手順、GUI 自動
 過去の確認済み結果は **`src/obstacle_route_sim/README.md` を正とする**。本ファイルでは
 その README にない、スキル運用上の判断点だけを補足する。
 
+## 2 種類の world を混同しない
+
+Gazebo 確認には性質の異なる 2 系統がある。どちらを指すのか曖昧なまま進めない。
+
+| 系統 | world | 用途 |
+| --- | --- | --- |
+| 合成 world | 直線 / S字 / クランク | `obstacle_monitor` の障害物判定、回避・復帰など個別挙動の確認 |
+| つくばチャレンジ 2026 デジタルツイン | 公式必須コース全域（1,142 waypoint） | 模擬 GNSS/LIO/融合を含むスタック全体の結合確認 |
+
+**ノードの追加、トピック契約の変更、起動構成の変更を伴う実装では、デジタルツインでの
+結合動作確認を必須とする。** 合成 world の確認はこれを代替しない。合成 world は
+`fake_localization_pose` を使い `gnss_lio_fusion` を起動しないため、自己位置・融合・診断を
+含む結合が確認範囲から外れる。
+
+手順（起動、DDS domain 86、監視条件、成功条件、停止、既知の詰まりどころ）は
+`src/obstacle_route_sim/README.md` の
+「つくばチャレンジ 2026 デジタルツインでの結合動作確認」を正とする。
+
 ## 着手前に確認すること
 
 - どの world（`straight` / `scurve` / `crank`）、どの `road_width`、pylon の有無・

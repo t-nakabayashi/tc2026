@@ -34,6 +34,7 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.exceptions import ParameterUninitializedException
 from rclpy.node import Node
+from tc_diagnostics import DiagnosticReporter, report_alive
 from rclpy.parameter import Parameter
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Header
@@ -362,6 +363,9 @@ class RouteManagerNode(Node):
         self.timer_once = self.create_timer(0.1, self._on_ready_once)
         self.timer_state = self.create_timer(sp, self._publish_route_state_tick)
 
+        # 自己申告診断。生存はreporterのタイマーが回ることで表される。
+        self._diagnostics = DiagnosticReporter(self)
+        report_alive(self._diagnostics)
         self.get_logger().info("route_manager (Phase2: 5-step handling, Node/Core/FSM split) started.")
         self._publish_mission_info()
 

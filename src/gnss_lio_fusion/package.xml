@@ -7,6 +7,7 @@
   <license>Apache-2.0</license>
   <buildtool_depend>ament_python</buildtool_depend>
   <depend>rclpy</depend>
+  <depend>tc_diagnostics</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
   <exec_depend>tf2_ros</exec_depend>
@@ -14,6 +15,7 @@
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>rtk_gps_um982_msgs</depend>
+  <depend>tc_geo_msgs</depend>
   <depend>geo_pose_converter</depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>launch_ros</exec_depend>

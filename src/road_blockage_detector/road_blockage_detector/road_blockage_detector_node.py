@@ -7,6 +7,7 @@ from typing import Deque, List, Optional, Tuple
 
 import rclpy
 from rclpy.node import Node
+from tc_diagnostics import DiagnosticReporter, report_alive
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy
 from rclpy.time import Time
 from geometry_msgs.msg import Pose, PoseWithCovarianceStamped
@@ -53,6 +54,10 @@ class RoadBlockageDetector(Node):
             10,
         )
         self.road_blocked_publisher = self.create_publisher(Bool, self.road_blocked_topic, 10)
+
+        # 自己申告診断。生存はreporterのタイマーが回ることで表される。
+        self._diagnostics = DiagnosticReporter(self)
+        report_alive(self._diagnostics)
 
         self.get_logger().info(
             'road_blockage_detector を起動しました。'

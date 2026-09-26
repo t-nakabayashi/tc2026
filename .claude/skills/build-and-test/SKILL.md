@@ -67,8 +67,11 @@ colcon build
 - テスト追加後は、可能な範囲で以下を実行する。
 
 ```bash
-pytest
+python3 scripts/run_pytest.py -v
 ```
+
+全体テストではGUIとその他を別のPythonプロセスで実行する。ROS/DDS初期化済みの親から
+GUIテストをforkすると停止するため、全パッケージを1回のpytestへまとめない。
 
 - 対象パッケージが明確な場合は、以下を使う。
 

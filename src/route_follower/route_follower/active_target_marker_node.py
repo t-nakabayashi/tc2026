@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import rclpy
 from rclpy.node import Node
+from tc_diagnostics import DiagnosticReporter, report_alive
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 
 from geometry_msgs.msg import PoseStamped
@@ -37,6 +38,9 @@ class ActiveTargetMarkerNode(Node):
             qos_target,
         )
         self.pub_marker = self.create_publisher(Marker, "active_target/marker", qos_marker)
+        # 自己申告診断。生存はreporterのタイマーが回ることで表される。
+        self._diagnostics = DiagnosticReporter(self)
+        report_alive(self._diagnostics)
         self.get_logger().info("active_target_marker node started.")
 
     def _on_target(self, msg: PoseStamped) -> None:

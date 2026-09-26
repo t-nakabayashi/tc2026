@@ -52,12 +52,17 @@ def test_icart_middle_calibration_and_three_layers_agree():
     assert cfg['deceleration_max']['linear']==nav['max_decel_v']==hardware['MAX_ACC_V']==1.5
     assert cfg['velocity_max']['linear']==nav['max_vel']<=hardware['MAX_VEL']
     assert cfg['velocity_max']['angular']==nav['max_w']<=hardware['MAX_W']
-    assert cfg['acceleration_max']['angular']==nav['max_acc_w']<=hardware['MAX_ACC_W']
+    # navigator は要求能力の下限、driver は実際に使用する上限を設定する。
+    assert nav['max_acc_w'] <= cfg['acceleration_max']['angular'] <= hardware['MAX_ACC_W']
     assert hardware['RADIUS[0]']==-.148248 and hardware['RADIUS[1]']==.148248
     assert hardware['TREAD']==.30737 and hardware['GEAR']==150
     actual=SimpleNamespace(max_linear_velocity=1.,max_angular_velocity=1.,
-        linear_acceleration=.7,linear_deceleration=1.5,angular_acceleration=.6)
+        linear_acceleration=.7,linear_deceleration=1.5,
+        angular_acceleration=cfg['acceleration_max']['angular'])
     assert driver_compatible(actual,1.,1.,.7,.6,1.5)
+    actual.angular_acceleration = nav['max_acc_w'] / 2
+    assert not driver_compatible(actual,1.,1.,.7,nav['max_acc_w'],1.5)
+    actual.angular_acceleration = cfg['acceleration_max']['angular']
     for bad in [.3, 1.0, math.nan]:
         actual.linear_deceleration=bad
         assert not driver_compatible(actual,1.,1.,.7,.6,1.5)

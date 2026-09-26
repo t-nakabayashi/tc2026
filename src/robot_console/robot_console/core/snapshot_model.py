@@ -214,6 +214,11 @@ class HealthSummaryView:
     health: FreshnessLevel = FreshnessLevel.UNKNOWN
     last_log_level: Optional[str] = None
     required_but_not_selected: bool = False
+    # GUI 以外（端末からの ros2 launch、別ホスト）で起動されていることを示す。
+    # 表示色は変えず、停止操作の可否判断と tooltip 表示に使う。
+    externally_started: bool = False
+    # 最も深刻な自己申告診断の message。診断が無い場合は空文字。
+    diagnostic_message: str = ''
 
 
 @dataclass

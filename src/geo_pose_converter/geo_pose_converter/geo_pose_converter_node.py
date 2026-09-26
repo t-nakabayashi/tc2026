@@ -11,6 +11,7 @@ from typing import Optional
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from tc_diagnostics import DiagnosticReporter, report_alive
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from sensor_msgs.msg import Imu, NavSatFix
@@ -81,6 +82,9 @@ class GeoPoseConverterNode(Node):
         self.create_subscription(RtkStatus, 'rtk_gps/rtk_status', self._on_status, qos)
 
         self.projection_timer = self.create_timer(1.0, self._publish_projection)
+        # 自己申告診断。生存はreporterのタイマーが回ることで表される。
+        self._diagnostics = DiagnosticReporter(self)
+        report_alive(self._diagnostics)
         self.get_logger().info('geo_pose_converter node started.')
 
     def _publish_projection(self) -> None:

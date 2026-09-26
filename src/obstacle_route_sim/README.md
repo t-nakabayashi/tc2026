@@ -201,6 +201,118 @@ python3 src/robot_console/tools/qt_route_stack_eval.py \
   --show-drive-status-gui
 ```
 
+## つくばチャレンジ 2026 デジタルツインでの結合動作確認
+
+公式必須コース全域（1,142 waypoint、約 2.224 km）の地形・建物・樹木を含む world で結合動作を
+確認する。直線・S字・クランクの合成 world と異なり、実コース相当の経路長・旋回・建物近傍での
+GNSS 品質変化と、GNSS/LIO 融合を含む完全なスタックが対象になる。
+
+**ノードの追加・トピック契約の変更・起動構成の変更を伴う実装では、この確認を必須とする。**
+合成 world の確認は `obstacle_monitor` や経路追従の個別挙動を見るためのものであり、
+融合・自己位置・診断を含む全体の結合を代替しない。
+
+### 合成 world の確認との違い
+
+| 項目 | 合成 world（直線/S字/クランク） | デジタルツイン |
+| --- | --- | --- |
+| 起動方法 | `gazebo_obstacle_route_stack.launch.py` + `robot_console` | `run_digital_twin` / `run_session` |
+| DDS domain | 既定（0） | 86（`--domain-id` で変更可） |
+| 自己位置 | `fake_localization_pose` | `gnss_lio_fusion`（模擬 GNSS + LIO 融合） |
+| waypoint 数 | 21〜33 | 1,142 |
+| 起動されるノード | route stack のみ | route stack + 模擬 GNSS/LIO/融合 + 歩行者 |
+
+### 対象ノード
+
+`gz sim` / `ros_gz_bridge` / `gnss_simulator` / `lio_sensor_adapter` / `laser_mapping` /
+`lio_gravity_alignment` / `gnss_lio_fusion` / `geo_pose_converter` / `route_geo_projector` /
+`route_planner` / `route_manager` / `route_follower` / `obstacle_monitor` /
+`drive_cmd_mux_node` / `robot_navigator` / `pedestrian_simulator`
+
+### 起動手順
+
+`run_digital_twin` は同梱地図を SHA-256 照合して展開し、`run_session` へ渡す。実機ドライバを
+起動する引数は提供しない。
+
+```bash
+source install/setup.bash
+run_id=$(date +%Y%m%d_%H%M%S)_digital_twin
+mkdir -p "log/codex/${run_id}/ros"
+export ROS_LOG_DIR="$PWD/log/codex/${run_id}/ros"
+
+# 1. 地図の展開と検証だけ先に行う（archive 破損を起動前に検出する）
+ros2 run icart_bringup run_digital_twin --output "log/codex/${run_id}/session01" --prepare-only
+
+# 2. シミュレーションスタックを起動する。運行UIも使う場合は --start-ui を付ける
+setsid ros2 run icart_bringup run_session \
+  --session "log/codex/${run_id}/session01/session.yaml" \
+  --environment simulation \
+  > "log/codex/${run_id}/run_session.log" 2>&1 &
+```
+
+`--start-ui` を付けた場合は `robot_console` が起動し、UI の開始操作まで走行しない。UI から
+共通スタックを重複起動しない。
+
+`run_digital_twin` を再実行すると新しい出力先が必要になる。既存 session を再利用する場合は
+手順 2 の `run_session` だけを実行する。
+
+### 監視条件
+
+DDS domain が 86 である点に注意する。確認用の端末でも `export ROS_DOMAIN_ID=86` が必要になる。
+
+```bash
+export ROS_DOMAIN_ID=86
+ros2 topic list -t | grep -E "fusion|diagnostics|scan|route_state|localization"
+ros2 topic echo /fusion/status --once
+ros2 topic echo /diagnostics --once
+```
+
+- `/route_state` (`tc_route_msgs/msg/RouteState`) の `total` が 1142 であること。
+- `/fusion/status` (`tc_geo_msgs/msg/FusionState`) の `mode` が `GPS_LIO` へ遷移し、
+  `has_estimate=true`、`baseline_ready=true` になること。起動直後は
+  `WAIT_GRAVITY_ALIGNMENT` / `WAIT_INITIAL_FIX` を経由する。
+- `/diagnostics` (`diagnostic_msgs/msg/DiagnosticArray`) が `<ノード名>/<観点>` 形式で
+  複数ノードから届くこと。
+- `/scan`、`/localization/pose_enu`、`/drive_mode_status` が配信されていること。
+
+Node Health の判定まで確認する場合は `--start-ui` で `robot_console` を起動し、
+起動・設定タブの Node Health カードを見る。`run_session` が起動したノードは
+`robot_console` の子プロセスではないため、`GUI外で起動` として `RUNNING` 表示になる。
+
+### 成功条件
+
+- 手順 1 が `固定地図を展開しました` を出力して終了コード 0 で終わる。
+- 全対象ノードが `ros2 node list` に現れる。
+- 上記「監視条件」の各トピックが配信され、`/fusion/status` が `GPS_LIO` に達する。
+- 停止処理後に対象プロセスが残らない。
+
+全区間の走行完走は本手順の成功条件に含めない。経路長が約 2.224 km あり、完走確認は別途
+時間を確保して実施する。走行させる場合は `--start-ui` で起動し、UI から `manual_start` を
+ON にして `/route_state.current_label` の進行を観測する。
+
+### 停止手順
+
+`setsid` で起動しているため、プロセスグループごと `SIGINT` を送る。バックグラウンドジョブの
+PID とプロセスグループ ID は一致しないため、`ps` で実 PGID を取得してから送る。
+
+```bash
+pid=$(pgrep -f "run_session --session log/codex/${run_id}")
+pgid=$(ps -o pgid= -p "$pid" | tr -d ' ')
+kill -INT -"$pgid"
+sleep 20
+pgrep -af "gz sim|ros_gz|run_session|gnss_lio_fusion|route_manager|route_follower" || echo "残存なし"
+```
+
+停止時に `SIGINT` 由来の `Traceback` が出ることがあるが、プロセスが消えていれば問題ない。
+
+### 既知の詰まりどころ
+
+- **`ros2 topic` 系コマンドに `timeout` を使わない。** `timeout` の `SIGTERM` は
+  `ros2topic` の spin を安全に中断できず、`/var/crash` に ROS ディストリ側の crash report が
+  生成される。件数を絞る確認には `--once` を使い、継続監視は `Ctrl+C`（`SIGINT`）で止める。
+- **`ROS_DOMAIN_ID=86` の設定漏れ。** 設定しないとトピックが 1 つも見えず、ノード未起動と
+  区別がつかない。`ros2 node list` が空のときは最初にこれを疑う。
+- 並行して別の試験を行う場合は `run_digital_twin --domain-id 87` のように分ける。
+
 ## 地形・センサ・融合の確認
 
 同梱のつくば地図で操作UIを使う場合は[icart_bringup](../icart_bringup/README.md)から起動する。

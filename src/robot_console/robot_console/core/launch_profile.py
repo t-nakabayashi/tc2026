@@ -30,6 +30,38 @@ PACKAGE_NAME = 'robot_console'
 DEFAULT_PROFILE_RELATIVE_PATH = Path('config') / 'node_launch_profiles.yaml'
 
 
+@dataclass(frozen=True)
+class HealthTopic:
+    """profileの死活監視に用いるtopic 1件分の定義。
+
+    `docs/ノード健全性監視設計.md` 3.2節のスキーマに対応する。登録できるのは
+    配信様式が `stream` のtopicだけであり、`latch` / `event` は登録しない。
+    """
+
+    topic: str
+    type: str
+    rate_hz: float
+
+    @property
+    def freshness_key(self) -> str:
+        """`FreshnessMonitor` 上のキー。topic名をそのまま用いる。"""
+
+        return self.topic
+
+    def thresholds(self) -> tuple:
+        """公称レートから (stale_sec, lost_sec) を導出する。
+
+        導出規則は `docs/トピック通信規約.md` 3章に従う。下限を設けるのは、
+        高レートなtopicでしきい値が過度に短くなり、一時的なスケジューリング
+        遅延で誤検出することを避けるためである。
+
+        Returns:
+            tuple: (stale_sec, lost_sec) [秒].
+        """
+
+        return (max(3.0 / self.rate_hz, 0.5), max(10.0 / self.rate_hz, 2.0))
+
+
 @dataclass
 class LaunchProfile:
     """起動対象ノード1件分のprofile定義。"""
@@ -44,7 +76,8 @@ class LaunchProfile:
     default_param: Optional[str] = None
     launch_order: int = 0
     startup_group: Optional[str] = None
-    health_topics: List[str] = field(default_factory=list)
+    health_topics: List[HealthTopic] = field(default_factory=list)
+    diagnostic_nodes: List[str] = field(default_factory=list)
     alternate_launch_file: Optional[str] = None
     launch_toggle_label: Optional[str] = None
     simulator_package: Optional[str] = None
@@ -77,6 +110,48 @@ def _default_profile_path() -> Optional[Path]:
     return None
 
 
+def _parse_health_topics(raw: object, *, index: int) -> List[HealthTopic]:
+    """`health_topics` を `HealthTopic` のリストへ変換する。
+
+    Args:
+        raw (object): YAML から読み出した値.
+        index (int): エラーメッセージ用の profiles 配列添字.
+
+    Returns:
+        List[HealthTopic]: 変換結果.
+
+    Raises:
+        LaunchProfileError: スキーマ違反、または `rate_hz` が正の有限値でない場合.
+    """
+
+    if not isinstance(raw, list):
+        raise LaunchProfileError(f"profiles[{index}].health_topics はリストである必要があります")
+
+    parsed: List[HealthTopic] = []
+    for position, item in enumerate(raw):
+        label = f"profiles[{index}].health_topics[{position}]"
+        if not isinstance(item, dict):
+            raise LaunchProfileError(
+                f"{label} は topic / type / rate_hz を持つ辞書である必要があります"
+            )
+        missing = [key for key in ('topic', 'type', 'rate_hz') if item.get(key) is None]
+        if missing:
+            raise LaunchProfileError(f"{label} に必須項目が不足しています: {', '.join(missing)}")
+        try:
+            rate_hz = float(item['rate_hz'])
+        except (TypeError, ValueError):
+            raise LaunchProfileError(f"{label}.rate_hz は数値である必要があります") from None
+        if not rate_hz > 0.0 or rate_hz == float('inf'):
+            raise LaunchProfileError(f"{label}.rate_hz は正の有限値である必要があります")
+        type_name = str(item['type'])
+        if type_name.count('/') != 2:
+            raise LaunchProfileError(
+                f"{label}.type は <package>/msg/<Name> 形式である必要があります: {type_name}"
+            )
+        parsed.append(HealthTopic(topic=str(item['topic']), type=type_name, rate_hz=rate_hz))
+    return parsed
+
+
 def _parse_profile_entry(entry: Dict[str, object], *, index: int) -> LaunchProfile:
     """YAML中の1エントリを LaunchProfile へ変換する。"""
 
@@ -87,9 +162,11 @@ def _parse_profile_entry(entry: Dict[str, object], *, index: int) -> LaunchProfi
             f"profiles[{index}] に必須項目が不足しています: {', '.join(missing)}"
         )
 
-    health_topics = entry.get('health_topics') or []
-    if not isinstance(health_topics, list):
-        raise LaunchProfileError(f"profiles[{index}].health_topics はリストである必要があります")
+    health_topics = _parse_health_topics(entry.get('health_topics') or [], index=index)
+
+    diagnostic_nodes = entry.get('diagnostic_nodes') or []
+    if not isinstance(diagnostic_nodes, list):
+        raise LaunchProfileError(f"profiles[{index}].diagnostic_nodes はリストである必要があります")
 
     user_arguments = entry.get('user_arguments') or []
     if not isinstance(user_arguments, list):
@@ -116,7 +193,8 @@ def _parse_profile_entry(entry: Dict[str, object], *, index: int) -> LaunchProfi
         default_param=entry.get('default_param'),
         launch_order=int(entry.get('launch_order', 0)),
         startup_group=entry.get('startup_group'),
-        health_topics=[str(topic) for topic in health_topics],
+        health_topics=health_topics,
+        diagnostic_nodes=[str(name) for name in diagnostic_nodes],
         alternate_launch_file=entry.get('alternate_launch_file'),
         launch_toggle_label=entry.get('launch_toggle_label'),
         simulator_package=entry.get('simulator_package'),

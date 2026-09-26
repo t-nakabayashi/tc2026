@@ -21,6 +21,8 @@
   <exec_depend>rosbag2_storage_default_plugins</exec_depend>
   <depend>rclpy</depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>diagnostic_msgs</exec_depend>
+  <exec_depend>rosidl_runtime_py</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
@@ -29,6 +31,7 @@
   <exec_depend>tc_geo_msgs</exec_depend>
   <exec_depend>tc_perception_msgs</exec_depend>
   <exec_depend>rtk_gps_um982_msgs</exec_depend>
+  <test_depend>tc_diagnostics</test_depend>
   <!-- pytest-forked はワークスペースの requirements.txt で導入する。 -->
 
   <export>

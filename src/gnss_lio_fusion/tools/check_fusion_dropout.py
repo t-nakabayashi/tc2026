@@ -9,7 +9,6 @@ os.environ['ROS_AUTOMATIC_DISCOVERY_RANGE'] = 'LOCALHOST'
 
 import rclpy
 from geometry_msgs.msg import Twist
-from std_msgs.msg import String
 from nav_msgs.msg import Odometry
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
@@ -17,6 +16,7 @@ from rosgraph_msgs.msg import Clock
 from sensor_msgs.msg import NavSatFix
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from rtk_gps_um982_msgs.msg import RtkStatus
+from tc_geo_msgs.msg import FusionState
 
 from geo_pose_converter.geo_core import EnuPoint, ProjectionConfig, enu_to_llh
 from gnss_lio_fusion.fusion_node import FusionNode
@@ -34,8 +34,8 @@ def main() -> None:
     status = source.create_publisher(RtkStatus, '/rtk_gps/rtk_status', 10)
     command = source.create_publisher(Twist, '/cmd_vel/autonomous', 10)
     poses, commands, modes = [], [], []
-    source.create_subscription(String, '/fusion/status',
-        lambda msg: modes.append(json.loads(msg.data)['mode']), 10)
+    source.create_subscription(FusionState, '/fusion/status',
+        lambda msg: modes.append(msg.mode), 10)
     current_time = [0.]
     source.create_subscription(PoseWithCovarianceStamped, '/localization/pose_enu',
         lambda msg: poses.append(msg.header.stamp.sec+msg.header.stamp.nanosec*1e-9), 10)

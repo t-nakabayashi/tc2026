@@ -28,6 +28,7 @@ import cv2
 import numpy as np
 import rclpy
 from rclpy.node import Node
+from tc_diagnostics import DiagnosticReporter, report_alive
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy, qos_profile_sensor_data
 
 from sensor_msgs.msg import LaserScan, Image
@@ -158,6 +159,9 @@ class ObstacleMonitorNode(Node):
         # 初期化時に距離範囲の制約を適用
         self._ensure_hint_range(max_obstacle_distance)
 
+        # 自己申告診断。生存はreporterのタイマーが回ることで表される。
+        self._diagnostics = DiagnosticReporter(self)
+        report_alive(self._diagnostics)
         self.get_logger().info('obstacle_monitor (legacy-following) started.')
 
     def _resolve_topic_name(self, name: str) -> str:

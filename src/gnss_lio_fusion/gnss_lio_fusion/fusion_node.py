@@ -15,11 +15,13 @@ from nav_msgs.msg import Odometry
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix, Joy
-from std_msgs.msg import String, Bool
+from std_msgs.msg import Bool
 from rclpy.clock import Clock, ClockType
 from rclpy.qos import qos_profile_sensor_data
 from .gnss_dropout import GnssDropoutHold
 from rtk_gps_um982_msgs.msg import RtkStatus
+from tc_diagnostics import ASPECT_QUALITY, ERROR, OK, WARN, DiagnosticReporter, report_alive
+from tc_geo_msgs.msg import FusionState
 
 from geo_pose_converter.geo_core import LlhPoint, ProjectionConfig, llh_to_enu
 from .mount_core import base_from_sensor, horizontal_lever
@@ -89,8 +91,10 @@ class FusionNode(Node):
         if self.values['publish_base_tf']:
             from tf2_ros import TransformBroadcaster
             self.tf_broadcaster = TransformBroadcaster(self)
+        # 配信様式: stream (50 Hz, tick 周期)
+        # QoS 例外: RELIABLE / depth 10。下流の制御入力であり取りこぼしを避ける。
         self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/localization/pose_enu', 10)
-        self.health_pub = self.create_publisher(String, '/fusion/status', 10)
+        self.health_pub = self.create_publisher(FusionState, '/fusion/status', 10)
         self.cmd_pub = self.create_publisher(Twist, '/cmd_vel/fusion_limited', 10)
         self.create_subscription(Odometry, '/lio/odometry', self.on_lio, 30)
         self.create_subscription(Odometry, '/ypspur_ros/odom', self.on_wheel, 30)
@@ -98,6 +102,7 @@ class FusionNode(Node):
             self.declare_parameter('gnss_dropout.button_index', 5).value,
             self.declare_parameter('gnss_dropout.joy_timeout_s', .5).value)
         self.gnss_dropout_active = False
+        # 配信様式: stream (10 Hz, dropout_tick 周期)
         self.dropout_pub = self.create_publisher(Bool, '/fusion/gnss_dropout_active', 1)
         self.create_subscription(Joy, '/joy', self.on_dropout_joy, qos_profile_sensor_data)
         self.dropout_clock = Clock(clock_type=ClockType.STEADY_TIME)
@@ -106,6 +111,8 @@ class FusionNode(Node):
         self.create_subscription(RtkStatus, '/rtk_gps/rtk_status', self.on_status, 30)
         self.create_subscription(Twist, '/cmd_vel/autonomous', self.on_command, 10)
         self.create_timer(.02, self.tick)
+        self.diagnostics = DiagnosticReporter(self)
+        report_alive(self.diagnostics, '融合処理を実行中')
         self.get_logger().info('適応baseline・GNSS/LIO融合を開始する')
 
     def on_alignment(self, msg):
@@ -251,7 +258,7 @@ class FusionNode(Node):
                 health = self.filter.diagnostics(now)
                 health.update(mode='WAIT_GRAVITY_ALIGNMENT', speed_limit_mps=0., sim_s=now,
                               reason='静止して水平基準の確定を待ってください')
-                self.health_pub.publish(String(data=json.dumps(health, allow_nan=False)))
+                self.publish_fusion_state(health)
             return
         cutoff = now-self.values['buffer_s']
         self.events.sort(key=lambda event: (event[0], event[1]))
@@ -309,9 +316,7 @@ class FusionNode(Node):
                 health = self.filter.diagnostics(now)
                 health.update(mode='WAIT_INITIAL_FIX', yaw=None, heading_sigma_deg=None,
                               speed_limit_mps=0., sim_s=now)
-                message = String()
-                message.data = json.dumps(health, ensure_ascii=False, allow_nan=False)
-                self.health_pub.publish(message)
+                self.publish_fusion_state(health)
             return
         if not self.lios:
             return
@@ -373,15 +378,74 @@ class FusionNode(Node):
         if self.motion.source == 'WHEEL_FALLBACK':
             health['mode'] = 'GPS_WHEEL' if health['mode'] == 'GPS_LIO' else 'WHEEL_PRIORITY'
             health['speed_limit_mps'] = min(health['speed_limit_mps'], .4)
-        message = String()
-        message.data = json.dumps(health, ensure_ascii=False, allow_nan=False)
-        self.health_pub.publish(message)
+        self.publish_fusion_state(health)
         if health['mode'] != self.last_mode:
             self.get_logger().info('融合状態: '+health['mode'])
             self.last_mode = health['mode']
         if self.log:
-            self.log.write(message.data+'\n')
+            # 出力ログは全診断量のダンプとして残す。配信する FusionState は
+            # 購読側が判断に用いる値だけに絞るため、両者の項目数は一致しない。
+            self.log.write(json.dumps(health, ensure_ascii=False, allow_nan=False)+'\n')
             self.log.flush()
+
+    def publish_fusion_state(self, health: dict) -> None:
+        """内部診断dictから `tc_geo_msgs/FusionState` を組み立てて配信する.
+
+        `health` は全診断量を含むが、配信するのは購読側が判断に用いる値だけに
+        絞る。未確定の姿勢（MODE_WAIT_*）は `has_estimate=False` で表し、
+        数値フィールドには既定値を入れる。
+
+        Args:
+            health (dict): `FusionFilter.diagnostics()` に本ノードの値を加えたdict.
+        """
+
+        message = FusionState()
+        message.header.stamp = self.get_clock().now().to_msg()
+        message.header.frame_id = self.projection.map_frame_id
+        message.mode = str(health['mode'])
+        yaw = health.get('yaw')
+        sigma = health.get('heading_sigma_deg')
+        message.has_estimate = yaw is not None and sigma is not None
+        if message.has_estimate:
+            message.yaw_rad = float(yaw)
+            message.heading_sigma_deg = float(sigma)
+            message.position_sigma_m = float(health.get('position_sigma_m', 0.))
+        baseline = health.get('baseline') or {}
+        message.baseline_reference_m = float(baseline.get('reference_m', 0.))
+        message.baseline_sigma_m = float(baseline.get('sigma_m', 0.))
+        message.baseline_ready = bool(baseline.get('ready', False))
+        message.speed_limit_mps = float(health.get('speed_limit_mps', 0.))
+        message.estimate_stamp_s = float(health.get('sim_s', 0.))
+        message.reason = str(health.get('reason', ''))
+        self.health_pub.publish(message)
+        self.report_quality(message)
+
+    # 融合モードごとの診断レベルと説明。外形（/fusion/status の受信）だけでは
+    # 「出てはいるが縮退している」ことが分からないため、自己申告で補う。
+    QUALITY_BY_MODE = {
+        'GPS_LIO': (OK, 'GNSS と LIO で推定中'),
+        'WAIT_GRAVITY_ALIGNMENT': (WARN, '水平基準の確定待ち'),
+        'WAIT_INITIAL_FIX': (WARN, '初期 fix の待機中'),
+        'LIO_PRIORITY': (WARN, 'GNSS 途絶のため LIO のみで推定中'),
+        'GPS_WHEEL': (WARN, 'LIO 途絶のため車輪オドメトリで補完中'),
+        'WHEEL_PRIORITY': (WARN, '車輪オドメトリのみで推定中'),
+        'LIO_FAULT': (ERROR, 'LIO が異常'),
+    }
+
+    def report_quality(self, message: FusionState) -> None:
+        """融合モードを診断の `quality` 観点として自己申告する.
+
+        Args:
+            message (FusionState): 配信した融合状態.
+        """
+
+        level, text = self.QUALITY_BY_MODE.get(message.mode, (WARN, '不明なモード'))
+        values = dict(mode=message.mode, speed_limit_mps=round(message.speed_limit_mps, 3))
+        if message.has_estimate:
+            values['heading_sigma_deg'] = round(message.heading_sigma_deg, 2)
+        if message.reason:
+            text = f'{text}: {message.reason}'
+        self.diagnostics.report(ASPECT_QUALITY, level, text, values=values)
 
     def on_command(self, msg: Twist) -> None:
         """不確かさによる減速だけを加える。URGの停止指令は解除しない."""

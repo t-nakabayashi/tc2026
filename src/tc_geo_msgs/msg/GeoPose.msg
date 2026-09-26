@@ -1,4 +1,7 @@
 # WGS84 geographic pose.
+#
+# 配信様式: 埋め込み用（GeoPoseWithQuality.pose / Waypoint.geo_pose。単独では配信しない）
+#
 # heading_deg is true-north clockwise [deg].
 
 std_msgs/Header header

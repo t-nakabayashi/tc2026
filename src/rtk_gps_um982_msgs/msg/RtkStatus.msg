@@ -1,3 +1,9 @@
+# UM982 受信機の測位品質と補正状態。
+#
+# 配信様式: stream (10 Hz, rtk_gps_um982 の output_rate_hz)
+# 配信元: rtk_gps_um982 (driver_node)
+# QoS 例外: RELIABLE / depth 10。driver 実装の既定であり、後段はこれに合わせる。
+
 std_msgs/Header header
 
 # RTK state (numeric form for C++ consumers + raw string from library)

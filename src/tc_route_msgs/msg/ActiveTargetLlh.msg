@@ -1,5 +1,8 @@
 # Current active target in WGS84 LLH for GUI, HTML UI, and logging.
 # /active_target remains the ENU control target.
+#
+# 配信様式: stream (20 Hz, 上流 /active_target の配信レートに追随)
+# 配信元: geo_pose_converter (route_geo_projector_node)
 
 std_msgs/Header header
 

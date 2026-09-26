@@ -8,6 +8,7 @@
   <license>MIT</license>
 
   <depend>rclpy</depend>
+  <depend>tc_diagnostics</depend>
   <depend>std_msgs</depend>
   <depend>tc_perception_msgs</depend>
   <depend>vision_msgs</depend>

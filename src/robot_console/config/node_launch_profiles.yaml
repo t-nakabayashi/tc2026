@@ -20,7 +20,15 @@
 #                                 desktop_check       : simulator代替launchにより机上確認が可能
 #                                 common               : 実機・シミュレーション・机上確認に共通して使う経路/走行制御スタック
 #                                 optional              : 可視化など業務モードのプリセットに含めないオプション
-#   health_topics              : 稼働判定に用いる代表トピック。
+#   health_topics              : 稼働判定に用いる代表トピック。topic / type / rate_hz を持つ。
+#                                 配信様式が stream のトピックのみ登録できる。latch・event は
+#                                 配信が無いことが正常であり、鮮度判定に使えない。
+#                                 rate_hz は「保証される最低レート」を書く。鮮度しきい値は
+#                                 stale=max(3/rate_hz, 0.5)、lost=max(10/rate_hz, 2.0) で導出する。
+#                                 詳細は docs/ノード健全性監視設計.md 3章。
+#   diagnostic_nodes            : この profile が起動し /diagnostics を配信するノード名。
+#                                 DiagnosticStatus.name の先頭と突き合わせる。health_topics が空なら
+#                                 1 Hz 診断の受信鮮度（stale 3秒、lost 10秒）で死活判定する。
 #   alternate_launch_file        : 同一profile内で切替可能な代替実装launch。
 #   launch_toggle_label            : alternate_launch_file切替チェックボックスの表示文言。
 #   simulator_package / simulator_launch_file : 実センサ・実機基盤を使わない疑似データ代替launch。
@@ -38,7 +46,20 @@ profiles:
     param_argument: null
     launch_order: 10
     startup_group: real_robot_base
-    health_topics: [/fusion/status, /localization/pose_enu, /scan, /route_state]
+    diagnostic_nodes: [gnss_lio_fusion, rtk_gps_um982_node, route_manager, route_follower, drive_cmd_mux_node, obstacle_monitor, route_geo_projector]
+    health_topics:
+      - topic: /fusion/status
+        type: tc_geo_msgs/msg/FusionState
+        rate_hz: 1.0
+      - topic: /localization/pose_enu
+        type: geometry_msgs/msg/PoseWithCovarianceStamped
+        rate_hz: 10.0
+      - topic: /scan
+        type: sensor_msgs/msg/LaserScan
+        rate_hz: 10.0
+      - topic: /route_state
+        type: tc_route_msgs/msg/RouteState
+        rate_hz: 1.0
     user_arguments: [route_directory, antenna_baseline_m, master_forward_m, output_root]
     default_arguments:
       route_directory: ''
@@ -54,12 +75,23 @@ profiles:
     param_argument: null
     launch_order: 10
     startup_group: real_robot_base
+    diagnostic_nodes: [gnss_lio_fusion, rtk_gps_um982_node, route_survey]
     health_topics:
-      - /fusion/status
-      - /localization/pose_enu
-      - /lio/odometry
-      - /ypspur_ros/odom
-      - /scan
+      - topic: /fusion/status
+        type: tc_geo_msgs/msg/FusionState
+        rate_hz: 1.0
+      - topic: /localization/pose_enu
+        type: geometry_msgs/msg/PoseWithCovarianceStamped
+        rate_hz: 10.0
+      - topic: /lio/odometry
+        type: nav_msgs/msg/Odometry
+        rate_hz: 10.0
+      - topic: /ypspur_ros/odom
+        type: nav_msgs/msg/Odometry
+        rate_hz: 10.0
+      - topic: /scan
+        type: sensor_msgs/msg/LaserScan
+        rate_hz: 10.0
     user_arguments: [site, station, output_root]
     default_arguments:
       site: 場所を選択
@@ -74,10 +106,17 @@ profiles:
     param_argument: session
     launch_order: 20
     startup_group: optional
+    diagnostic_nodes: [gnss_lio_fusion, route_manager, route_follower, drive_cmd_mux_node, obstacle_monitor]
     health_topics:
-      - /fusion/status
-      - /localization/pose_enu
-      - /scan
+      - topic: /fusion/status
+        type: tc_geo_msgs/msg/FusionState
+        rate_hz: 1.0
+      - topic: /localization/pose_enu
+        type: geometry_msgs/msg/PoseWithCovarianceStamped
+        rate_hz: 10.0
+      - topic: /scan
+        type: sensor_msgs/msg/LaserScan
+        rate_hz: 10.0
     user_arguments:
       - environment
     default_arguments:
@@ -93,7 +132,9 @@ profiles:
     launch_order: 30
     startup_group: real_robot_base
     health_topics:
-      - /ypspur_ros/odom
+      - topic: /ypspur_ros/odom
+        type: nav_msgs/msg/Odometry
+        rate_hz: 10.0
     user_arguments:
       - cmd_vel_topic
       - odom_topic
@@ -118,10 +159,17 @@ profiles:
     default_param: config/default.yaml
     launch_order: 20
     startup_group: real_robot_base
+    diagnostic_nodes: [rtk_gps_um982_node]
     health_topics:
-      - /rtk_gps/fix
-      - /rtk_gps/heading
-      - /rtk_gps/rtk_status
+      - topic: /rtk_gps/fix
+        type: sensor_msgs/msg/NavSatFix
+        rate_hz: 5.0
+      - topic: /rtk_gps/heading
+        type: sensor_msgs/msg/Imu
+        rate_hz: 5.0
+      - topic: /rtk_gps/rtk_status
+        type: rtk_gps_um982_msgs/msg/RtkStatus
+        rate_hz: 5.0
 
   - profile_id: obstacle_route_sim
     category: simulation_base
@@ -169,11 +217,14 @@ profiles:
     default_param: params/default.yaml
     launch_order: 60
     startup_group: common
+    diagnostic_nodes: [route_manager]
     health_topics:
-      - /active_route
-      - /route_state
-      - /manager_status
-      - /mission_info
+      - topic: /route_state
+        type: tc_route_msgs/msg/RouteState
+        rate_hz: 1.0
+      - topic: /manager_status
+        type: tc_route_msgs/msg/ManagerStatus
+        rate_hz: 1.0
     user_arguments:
       - start_label
       - goal_label
@@ -192,9 +243,11 @@ profiles:
     default_param: params/default.yaml
     launch_order: 65
     startup_group: common
+    diagnostic_nodes: [geo_pose_converter, route_geo_projector]
     health_topics:
-      - /localization/pose_llh
-      - /route/active_target_llh
+      - topic: /localization/pose_llh
+        type: tc_geo_msgs/msg/GeoPoseWithQuality
+        rate_hz: 5.0
     user_arguments:
       - enable_geo_pose_converter
       - pose_enu_topic
@@ -214,9 +267,12 @@ profiles:
     default_param: params/default.yaml
     launch_order: 70
     startup_group: common
+    diagnostic_nodes: [route_follower]
+    # active_target は目標未設定・停止時に配信されないため死活判定に使わない。
     health_topics:
-      - /active_target
-      - /follower_state
+      - topic: /follower_state
+        type: tc_route_msgs/msg/FollowerState
+        rate_hz: 10.0
 
   - profile_id: drive_mode_manager
     category: drive_stack
@@ -227,8 +283,11 @@ profiles:
     default_param: params/default.yaml
     launch_order: 40
     startup_group: common
+    diagnostic_nodes: [drive_cmd_mux_node]
     health_topics:
-      - /drive_mode_status
+      - topic: /drive_mode_status
+        type: tc_route_msgs/msg/DriveModeStatus
+        rate_hz: 10.0
     user_arguments:
       - joy_input
       - start_gui
@@ -244,8 +303,11 @@ profiles:
     default_param: params/default.yaml
     launch_order: 90
     startup_group: desktop_check
+    diagnostic_nodes: [robot_navigator]
     health_topics:
-      - /cmd_vel/autonomous
+      - topic: /cmd_vel/autonomous
+        type: geometry_msgs/msg/Twist
+        rate_hz: 5.0
     simulator_package: robot_navigator
     simulator_launch_file: robot_simulator.launch.py
     simulator_argument_map:
@@ -267,9 +329,14 @@ profiles:
     param_argument: null
     launch_order: 80
     startup_group: desktop_check
+    diagnostic_nodes: [obstacle_monitor]
     health_topics:
-      - /obstacle_avoidance_hint
-      - /sensor_viewer
+      - topic: /obstacle_avoidance_hint
+        type: tc_route_msgs/msg/ObstacleAvoidanceHint
+        rate_hz: 10.0
+      - topic: /sensor_viewer
+        type: sensor_msgs/msg/Image
+        rate_hz: 5.0
     simulator_package: obstacle_monitor
     simulator_launch_file: laser_scan_simulator.launch.py
 
@@ -285,8 +352,8 @@ profiles:
     default_param: params/default.yaml
     launch_order: 100
     startup_group: desktop_check
-    health_topics:
-      - /perception/road_blockage/overlay
+    diagnostic_nodes: [road_blockage_detector]
+    health_topics: []
     simulator_package: yolo_detector
     simulator_launch_file: camera_simulator_node.launch.py
 
@@ -300,8 +367,8 @@ profiles:
     default_param: params/default.yaml
     launch_order: 110
     startup_group: desktop_check
-    health_topics:
-      - /perception/traffic_signal/overlay
+    diagnostic_nodes: [traffic_signal_recognizer]
+    health_topics: []
     simulator_package: yolo_detector
     simulator_launch_file: camera_simulator_node.launch.py
 
@@ -313,8 +380,11 @@ profiles:
     param_argument: null
     launch_order: 210
     startup_group: optional
+    diagnostic_nodes: [active_route_marker]
     health_topics:
-      - /active_route/markers
+      - topic: /active_route/markers
+        type: visualization_msgs/msg/MarkerArray
+        rate_hz: 1.0
     user_arguments:
       - active_route_topic
       - marker_topic
@@ -330,8 +400,11 @@ profiles:
     param_argument: null
     launch_order: 220
     startup_group: optional
+    diagnostic_nodes: [active_target_marker]
     health_topics:
-      - /active_target/marker
+      - topic: /active_target/marker
+        type: visualization_msgs/msg/Marker
+        rate_hz: 1.0
     user_arguments:
       - active_target_topic
       - marker_topic

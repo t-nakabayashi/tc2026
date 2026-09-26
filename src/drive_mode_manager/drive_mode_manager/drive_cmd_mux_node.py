@@ -5,6 +5,7 @@ from __future__ import annotations
 import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
+from tc_diagnostics import DiagnosticReporter, report_alive
 from sensor_msgs.msg import Joy
 
 from drive_mode_manager.drive_mode_core import (
@@ -37,6 +38,9 @@ class DriveCmdMuxNode(Node):
         self.create_subscription(Joy, 'joy', self._on_joy, 10)
         period_s = 1.0 / max(float(self.get_parameter('publish_rate_hz').value), 1.0)
         self.create_timer(period_s, self._on_timer)
+        # 自己申告診断。生存はreporterのタイマーが回ることで表される。
+        self._diagnostics = DiagnosticReporter(self)
+        report_alive(self._diagnostics)
         self.get_logger().info('drive_cmd_mux_node started: /cmd_vel is managed by this node')
 
     def _load_config(self) -> DriveModeConfig:
@@ -115,7 +119,7 @@ class DriveCmdMuxNode(Node):
 
     def _publish_status(self, output: DriveModeOutput) -> None:
         msg = DriveModeStatus()
-        msg.stamp = self.get_clock().now().to_msg()
+        msg.header.stamp = self.get_clock().now().to_msg()
         msg.mode = output.mode
         msg.output_source = output.output_source
         msg.joy_available = output.joy_available

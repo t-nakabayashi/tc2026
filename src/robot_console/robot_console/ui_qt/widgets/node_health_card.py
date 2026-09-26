@@ -108,6 +108,10 @@ class NodeHealthCard(QtWidgets.QGroupBox):
         chip = QtWidgets.QToolButton()
         chip.setText(item.profile_id)
         tooltip = f'{item.profile_id} / {item.status} / health={item.health.value}'
+        if item.externally_started:
+            tooltip += ' / GUI外で起動'
+        if item.diagnostic_message:
+            tooltip += f' / {item.diagnostic_message}'
         if item.required_but_not_selected:
             tooltip += ' / required_but_not_selected'
         chip.setToolTip(tooltip)

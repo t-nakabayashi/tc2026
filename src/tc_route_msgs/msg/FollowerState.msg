@@ -1,6 +1,9 @@
 # tc_route_msgs/msg/FollowerState.msg
 # route_follower ノードが現在の追従状態を通知する。
 # Phase2にて拡張された最終仕様。
+#
+# 配信様式: stream (20 Hz, route_follower の control_rate_hz)
+# 配信元: route_follower
 
 std_msgs/Header header
 

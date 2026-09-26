@@ -5,6 +5,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import rclpy
 from rclpy.node import Node
+from tc_diagnostics import DiagnosticReporter, report_alive
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy
 from std_msgs.msg import Int32
 from tc_perception_msgs.msg import OverlayDetection, PerceptionOverlay
@@ -58,6 +59,10 @@ class TrafficSignalRecognizerNode(Node):
             self.overlay_topic,
             QoSProfile(depth=10, reliability=QoSReliabilityPolicy.BEST_EFFORT),
         )
+
+        # 自己申告診断。生存はreporterのタイマーが回ることで表される。
+        self._diagnostics = DiagnosticReporter(self)
+        report_alive(self._diagnostics)
 
         self.get_logger().info(
             'traffic_signal_recognizer を起動しました。'

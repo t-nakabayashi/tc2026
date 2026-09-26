@@ -1,4 +1,7 @@
 # Geographic pose with GNSS/fusion quality for monitoring and logging.
+#
+# 配信様式: stream (10 Hz, 上流の GNSS 出力レートに追随)
+# 配信元: geo_pose_converter (geo_pose_converter_node / route_geo_projector_node)
 
 std_msgs/Header header
 tc_geo_msgs/GeoPose pose

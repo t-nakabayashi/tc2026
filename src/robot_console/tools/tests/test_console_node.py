@@ -77,9 +77,12 @@ def test_obstacle_hint_subscription_uses_best_effort_reliability():
         rclpy.init()
     node = RobotConsoleNode(_make_core(), node_name='test_obstacle_hint_qos_node')
     try:
+        # 表示用と健全性監視用の2本が張られる。いずれも BEST_EFFORT である必要がある。
         infos = node.get_subscriptions_info_by_topic('obstacle_avoidance_hint')
-        assert len(infos) == 1
-        assert infos[0].qos_profile.reliability == ReliabilityPolicy.BEST_EFFORT
+        assert infos
+        assert all(
+            info.qos_profile.reliability == ReliabilityPolicy.BEST_EFFORT for info in infos
+        )
     finally:
         node.destroy_node()
 
@@ -103,8 +106,10 @@ def test_image_subscriptions_use_best_effort_reliability():
             'perception/traffic_signal/overlay',
         ):
             infos = node.get_subscriptions_info_by_topic(topic)
-            assert len(infos) == 1, topic
-            assert infos[0].qos_profile.reliability == ReliabilityPolicy.BEST_EFFORT, topic
+            assert infos, topic
+            assert all(
+                info.qos_profile.reliability == ReliabilityPolicy.BEST_EFFORT for info in infos
+            ), topic
     finally:
         node.destroy_node()
 
@@ -146,3 +151,42 @@ def test_ntrip_status_reaches_snapshot_via_dds(monkeypatch):
         assert c.build_snapshot().ntrip_state.mountpoint == 'MOCK'
     finally:
         producer.destroy_node();node.destroy_node()
+
+
+def test_diagnostic_only_health_and_clear_reach_snapshot_via_dds():
+    """実際のReporter配信から外部起動検出・診断取り下げまでを確認する。"""
+    import time
+    from tc_diagnostics import DiagnosticReporter, ERROR, report_alive
+    from robot_console.core.freshness import FreshnessLevel
+
+    if not rclpy.ok():
+        rclpy.init()
+    core = _make_core()
+    node = RobotConsoleNode(core, node_name='test_health_consumer')
+    producer = rclpy.create_node('traffic_signal_recognizer')
+    reporter = DiagnosticReporter(producer)
+    report_alive(reporter)
+    reporter.report('quality', ERROR, '認識異常')
+
+    def await_health(expected_status):
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            reporter.publish()
+            rclpy.spin_once(node, timeout_sec=.05)
+            health = next(h for h in core.build_snapshot().health
+                          if h.profile_id == 'traffic_signal_recognizer')
+            if health.status == expected_status:
+                return health
+        pytest.fail(f'診断が反映されません: {health}')
+
+    try:
+        health = await_health('ERROR')
+        assert health.externally_started
+        assert health.diagnostic_message == '認識異常'
+        reporter.clear('quality')
+        health = await_health('RUNNING')
+        assert health.health == FreshnessLevel.OK
+        assert health.diagnostic_message == '稼働中'
+    finally:
+        producer.destroy_node()
+        node.destroy_node()

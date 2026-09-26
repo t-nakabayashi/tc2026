@@ -41,14 +41,11 @@ def test_reset_returns_to_unknown():
     assert monitor.evaluate('topic') == FreshnessLevel.UNKNOWN
 
 
-def test_from_config_parses_dotted_keys_matching_architecture_doc():
-    config = {
-        'freshness.default.stale_sec': 1.0,
-        'freshness.default.lost_sec': 3.0,
-        'freshness.gps.status.stale_sec': 3.0,
-        'freshness.gps.status.lost_sec': 10.0,
-    }
-    monitor = FreshnessMonitor.from_config(config)
+def test_per_key_thresholds_do_not_affect_other_keys():
+    """しきい値はキー単位で独立し、未設定キーは既定値のまま判定する."""
+
+    monitor = FreshnessMonitor()
+    monitor.set_threshold('gps.status', stale_sec=3.0, lost_sec=10.0)
     base = datetime(2026, 1, 1, tzinfo=timezone.utc)
     monitor.mark_received('gps.status', base)
     monitor.mark_received('other', base)
