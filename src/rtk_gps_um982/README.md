@@ -8,13 +8,13 @@ Unicore UM982 デュアルアンテナ RTK GNSS 受信機を ROS 2 (Jazzy) で�
 
 | Topic                       | Type                                | 説明                              |
 | --------------------------- | ----------------------------------- | --------------------------------- |
-| `~/fix`                     | `sensor_msgs/NavSatFix`             | 緯度経度高度、HDOP 由来の共分散   |
-| `~/heading`                 | `sensor_msgs/Imu`                   | デュアルアンテナの orientation (REP-103 ENU) |
-| `~/rtk_status`              | `rtk_gps_um982_msgs/RtkStatus`      | RTK 種別・衛星数・baseline・RTCM 累計バイト等 |
+| `/rtk_gps/fix`                     | `sensor_msgs/NavSatFix`             | 緯度経度高度、HDOP 由来の共分散   |
+| `/rtk_gps/heading`                 | `sensor_msgs/Imu`                   | デュアルアンテナの orientation (REP-103 ENU) |
+| `/rtk_gps/rtk_status`              | `rtk_gps_um982_msgs/RtkStatus`      | RTK 種別・衛星数・baseline・RTCM 累計バイト等 |
 
 launchの既定namespaceは `rtk_gps`、ノード名は `rtk_gps_um982_node`。
-`~` はノードのprivate名なので、完全名は `/rtk_gps/rtk_gps_um982_node/fix` などになる。
-`~/ntrip_status` は常時、`~/time_sync` は時刻配信有効時に、診断JSONを `std_msgs/String` で配信する。
+トピックはノード名を含まず、実機・模擬とも `/rtk_gps/` 配下に公開する。
+`/rtk_gps/ntrip_status` は常時、`/rtk_gps/time_sync` は時刻配信有効時に、診断JSONを `std_msgs/String` で配信する。
 
 ## 必要環境
 
@@ -79,9 +79,9 @@ ros2 run rtk_gps_um982 rtk_gps_um982_node \
 | `ntrip.mountpoint`    | string | `""`            | mountpoint                                            |
 | `ntrip.user`          | string | `""`            | ユーザ名                                              |
 | `ntrip.password`      | string | `""`            | パスワード。共有・Git管理対象外の設定で管理する        |
-| `publish.navsatfix`   | bool   | `true`          | `~/fix` を publish するか                             |
-| `publish.imu_heading` | bool   | `true`          | `~/heading` を publish するか                         |
-| `publish.rtk_status`  | bool   | `true`          | `~/rtk_status` を publish するか                      |
+| `publish.navsatfix`   | bool   | `true`          | `/rtk_gps/fix` を publish するか                             |
+| `publish.imu_heading` | bool   | `true`          | `/rtk_gps/heading` を publish するか                         |
+| `publish.rtk_status`  | bool   | `true`          | `/rtk_gps/rtk_status` を publish するか                      |
 | `min_fix_for_publish` | string | `standalone`    | `none`/`standalone`/`dgps`/`float`/`fix`              |
 | `hdop_sigma`          | float  | `1.0`           | NavSatFix の position_covariance スケール             |
 
@@ -120,13 +120,13 @@ sudo usermod -aG dialout $USER
 
 ### NTRIP に繋がらない
 
-- `~/rtk_status` の `rtcm_bytes_received` が増えていなければ caster 到達不可
+- `/rtk_gps/rtk_status` の `rtcm_bytes_received` が増えていなければ caster 到達不可
 - ホスト/ポート/mountpoint/credentials を確認
 - ファイアウォール (caster は TCP 2101 が多い)
 
 ### RTK Fix にならない
 
-- `~/rtk_status.correction_age_s` を見て補正が新しい (~1-3s) か確認
+- `/rtk_gps/rtk_status.correction_age_s` を見て補正が新しい (~1-3s) か確認
 - アンテナの空が見えているか、マルチパス源 (建物近接) がないか
 - 基準局までの距離 (10km 程度まで RTK Fix 期待、それ以上は厳しい)
 
@@ -158,7 +158,7 @@ TLS・HTTP chunked必須のサービスは非対応。実機FIXは別途確認�
 
 ### 基地局診断
 
-`~/ntrip_status` (`std_msgs/String` JSON) を1 Hzで配信する。
+`/rtk_gps/ntrip_status` (`std_msgs/String` JSON) を1 Hzで配信する。
 NTRIP接続状態、CRC確認済みRTCM量・速度・最終受信経過、再接続回数、通信エラー種別を
 位置コールバックとは独立して送る。認証情報は含めない。
 `ntrip.station_id`, `ntrip.station_label`, `ntrip.site` はUI向けの表示名（任意）。

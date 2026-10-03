@@ -49,7 +49,21 @@ Joy 0採取開始・1停止点・2信号停止点・3採取終了。実機はenv
 
 手動経路採取もFAST-LIOとGNSSの融合位置を使用する。route_surveyの比較表示では、
 GNSS単独軌跡と融合軌跡を切替でき、受信状態を時刻ごとに確認できる。
-GNSS購読先は実機のgnss_namespace／模擬の/rtk_gpsに自動で合わせる。
+GNSSの標準公開先は実機・模擬とも `/rtk_gps/{fix,heading,rtk_status,ntrip_status,time_sync}`。
+GUI・融合・座標変換・経路採取はこの公開名を使用する。
+
+## GNSS単独診断
+
+```bash
+ros2 launch icart_bringup gnss.launch.py site:=つくば station:=地域の既定局
+```
+
+GNSSのみを起動する。地域と補正局は実機共通起動と同じ
+`params/rtk_stations.yaml`から選ぶ。`station`は地域内の局ID、地域の既定局、NTRIPなし、custom。
+customでは接続先・マウントポイント・認証を含むYAMLを`ntrip_config`に指定する。
+`config`は任意の受信機設定YAML、未指定なら`params/hardware.yaml`のシリアル設定を使う。
+局・場所・測定UTCの設定は両起動経路で共通に適用する。
+切替は停止・再起動で行い、同じ受信機を二重起動しない。
 
 ## ランダム歩行者
 

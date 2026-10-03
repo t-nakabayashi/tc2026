@@ -11,18 +11,9 @@
 ros2 run robot_console robot_console_web
 ```
 
-上記はシミュレーションの公開GNSSトピック（`/rtk_gps/rtk_status` と
-`/rtk_gps/ntrip_status`）を購読する。実機UM982の診断を表示する場合は、
-ドライバのprivate名へ2つともremapして起動する。
-
-```bash
-ros2 run robot_console robot_console_web --ros-args \
-  -r rtk_gps/rtk_status:=/rtk_gps/rtk_gps_um982_node/rtk_status \
-  -r rtk_gps/ntrip_status:=/rtk_gps/rtk_gps_um982_node/ntrip_status
-```
-
-実機の `gnss_namespace` を変更した場合は、右辺の
-`/rtk_gps/rtk_gps_um982_node` をその設定値に合わせる。
+上記は実機・シミュレーション共通のGNSSトピック
+`/rtk_gps/rtk_status` と `/rtk_gps/ntrip_status` を購読する。
+別の配信先を使う場合は `--ros-args -r` で両診断トピックを指定する。
 `--port` などのHTTPサーバ引数は `--ros-args` より前に指定できる。
 
 UIはGET専用で、手動介入・起動操作・パラメータ編集のAPIを持たない。一方で認証は無く、

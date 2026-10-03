@@ -23,7 +23,7 @@ def setup(context) -> list:
     validate_domain(data, environment, int(os.environ.get('ROS_DOMAIN_ID', '0')))
     simulation = environment == 'simulation'
     share = Path(get_package_share_directory('obstacle_route_sim'))
-    gps_base = '/rtk_gps' if simulation else data.get('gnss_namespace', '/rtk_gps/rtk_gps_um982_node')
+    gps_base = '/rtk_gps' if simulation else data.get('gnss_namespace', '/rtk_gps')
     projection = data['projection_params']
     hardware = read_yaml(Path(data['hardware_config'])) if not simulation and data.get('hardware_config') else None
     if hardware:

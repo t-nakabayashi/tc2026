@@ -118,7 +118,7 @@ ros2 launch drive_mode_manager ps3_joy_sim.launch.py
 ## 外部インタフェース
 
 以下は単体起動の既定名です。共通起動のmuxは自律入力を `/cmd_vel/fusion_limited` へremapします。
-実機UM982の状態の完全名は `/rtk_gps/rtk_gps_um982_node/rtk_status` であり、
+実機UM982の状態の完全名は `/rtk_gps/rtk_status` であり、
 単体の `drive_status_gui_node` を接続する場合も入力名を合わせてください。
 
 ### Subscriber

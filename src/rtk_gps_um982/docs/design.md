@@ -12,17 +12,16 @@ UM982のシリアル入力から位置・デュアルアンテナ方位・RTK状
 ## 2. 公開インタフェース
 
 launch既定のノードは `/rtk_gps/rtk_gps_um982_node`。
-以下の `~` はそのノード名まで含むprivate名前空間である。
-例えば `~/fix` の完全名は `/rtk_gps/rtk_gps_um982_node/fix` となる。
+トピックはノード名を含まず、実機・模擬とも `/rtk_gps/` 配下に公開する。
 パブリッシャのQoSはRELIABLE・VOLATILE・depth 10。
 
 | トピック | 型 | 配信条件 |
 |---|---|---|
-| `~/fix` | `sensor_msgs/NavSatFix` | 有効位置かつ最低品質以上の位置コールバック |
-| `~/heading` | `sensor_msgs/Imu` | 同上。方位欠測は共分散で未提供と表現 |
-| `~/rtk_status` | `rtk_gps_um982_msgs/RtkStatus` | 同上 |
-| `~/ntrip_status` | `std_msgs/String` | 1 HzのJSON。位置欠測と独立 |
-| `~/time_sync` | `std_msgs/String` | 時刻配信有効時、1 HzのJSON |
+| `/rtk_gps/fix` | `sensor_msgs/NavSatFix` | 有効位置かつ最低品質以上の位置コールバック |
+| `/rtk_gps/heading` | `sensor_msgs/Imu` | 同上。方位欠測は共分散で未提供と表現 |
+| `/rtk_gps/rtk_status` | `rtk_gps_um982_msgs/RtkStatus` | 同上 |
+| `/rtk_gps/ntrip_status` | `std_msgs/String` | 1 HzのJSON。位置欠測と独立 |
+| `/rtk_gps/time_sync` | `std_msgs/String` | 時刻配信有効時、1 HzのJSON |
 
 位置・方位・RTK状態には同じstampと `frame_id` を付ける。
 `min_fix_for_publish` 未満や無効位置ではこの3種を配信しない。
@@ -71,10 +70,10 @@ NTRIP有効時はhostとmountpointが必須。欠ける場合はエラーログ�
 有効RTCMが15秒途絶した接続を切り、失敗時は1秒から最大30秒へ待機を延ばして再接続する。
 TLSとHTTP chunked転送は非対応。
 
-`~/ntrip_status` は接続状態、CRC確認済みRTCM量・受信速度・経過時間、
+`/rtk_gps/ntrip_status` は接続状態、CRC確認済みRTCM量・受信速度・経過時間、
 再接続回数・エラー種別、起動時の基地局表示情報を返す。認証情報は含めない。
 位置トピックとこの診断を合わせて、測位欠測と補正通信の欠測を確認する。
-`~/time_sync` はRMC鮮度・SOCK送信数・拒否数・エラーを返す。
+`/rtk_gps/time_sync` はRMC鮮度・SOCK送信数・拒否数・エラーを返す。
 `/diagnostics` の配信は実装されていない。
 
 ## 6. 確認方法
@@ -98,7 +97,7 @@ GNSSドライバは受信機の測定UTCをROSメッセージへ保持する。R
 
 有効RMCから日付を確定し、GGAの測定時分秒と結合する。アンカーが2秒より古い場合は位置配信を止める。
 time_sync_coreはチェックサム・状態・暦日を検査する。単一のシリアル読み取りからRMCを分配し、
-chrony SOCK送信はnonblockingで再試行する。~/time_syncに鮮度・送信数・拒否数・SOCKエラーを出力する。
+chrony SOCK送信はnonblockingで再試行する。/rtk_gps/time_syncに鮮度・送信数・拒否数・SOCKエラーを出力する。
 
 | stamp_source | 動作 |
 |---|---|

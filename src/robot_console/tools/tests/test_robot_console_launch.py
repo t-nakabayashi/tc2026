@@ -113,3 +113,11 @@ def test_generate_launch_description_builds_without_error():
     description = module.generate_launch_description()
 
     assert description is not None
+
+
+def test_gnss_autostart_requires_explicit_site():
+    from robot_console.ui_qt_main import _parse_args
+    with pytest.raises(SystemExit):
+        _parse_args(['--start-gnss'])
+    args = _parse_args(['--start-gnss', '--gnss-site', 'つくば'])
+    assert args.start_gnss and args.gnss_site == 'つくば'

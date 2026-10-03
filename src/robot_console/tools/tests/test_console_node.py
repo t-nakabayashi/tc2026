@@ -19,6 +19,56 @@ from robot_console.ros.console_node import RobotConsoleNode, start_ros_thread  #
 REPO_PROFILE_PATH = Path(__file__).resolve().parents[2] / 'config' / 'node_launch_profiles.yaml'
 
 
+def test_shared_sensor_topics_reach_console_through_dds():
+    import json
+    import time
+    from rclpy.executors import SingleThreadedExecutor
+    from rclpy.node import Node
+    from rclpy.qos import qos_profile_sensor_data
+    from sensor_msgs.msg import Image
+    from nav_msgs.msg import Odometry
+    from std_msgs.msg import String
+    from rtk_gps_um982_msgs.msg import RtkStatus
+    from robot_console.core.freshness import FreshnessLevel
+    if not rclpy.ok():
+        rclpy.init(args=['--ros-args', '-r', 'odom:=/ypspur_ros/odom'])
+    core = _make_core()
+    consumer = RobotConsoleNode(core, node_name='sensor_contract_consumer')
+    producer = Node('sensor_contract_producer')
+    executor = SingleThreadedExecutor()
+    executor.add_node(consumer)
+    executor.add_node(producer)
+    status = RtkStatus(rtk_state=4, rtk_state_raw='fix', num_satellites=28, hdop=.5)
+    diagnostic = String(data=json.dumps(dict(state='RECEIVING', site='tsukuba',
+                                             station_id='tsukuba_takashima',
+                                             transport_connected=True, rtcm_bytes_total=1024)))
+    image = Image(height=2, width=2, encoding='rgb8', step=6, data=[127]*12)
+    publishers = [(producer.create_publisher(RtkStatus, '/rtk_gps/rtk_status', 10), status),
+                  (producer.create_publisher(String, '/rtk_gps/ntrip_status', 10), diagnostic),
+                  (producer.create_publisher(Odometry, '/ypspur_ros/odom', 10), Odometry()),
+                  (producer.create_publisher(Image, '/usb_cam/image_raw', qos_profile_sensor_data), image),
+                  (producer.create_publisher(Image, '/sensor_viewer', qos_profile_sensor_data), image)]
+    try:
+        deadline = time.monotonic()+5
+        while time.monotonic() < deadline:
+            for publisher, message in publishers:
+                publisher.publish(message)
+            executor.spin_once(timeout_sec=.02)
+            snapshot = core.build_snapshot()
+            topics = {panel.topic for panel in snapshot.sensor_panels}
+            if (snapshot.gps_state.num_satellites == 28
+                    and snapshot.ntrip_state.station_id == 'tsukuba_takashima'
+                    and snapshot.drive_mode_state.odom_freshness != FreshnessLevel.UNKNOWN
+                    and {'/usb_cam/image_raw', '/sensor_viewer'} <= topics):
+                break
+        else:
+            pytest.fail('GNSS, NTRIP, odometry or sensor images failed to reach the console')
+    finally:
+        executor.shutdown()
+        consumer.destroy_node()
+        producer.destroy_node()
+
+
 def _make_core() -> ConsoleCore:
     return ConsoleCore(profile_store=LaunchProfileStore(REPO_PROFILE_PATH))
 

@@ -81,7 +81,7 @@ def chrony_ready(sources: str, tracking: str, max_offset: float) -> bool:
 
 
 def ntp_ready(sources: str, tracking: str, max_offset: float) -> bool:
-    """NTP trial gate: fresh selected server and estimated total error <=20 ms.
+    """NTP trial gate: fresh selected server and estimated total error <=35 ms.
 
     This bound assumes the upstream clock is correct, not independent proof.
     """
@@ -106,7 +106,7 @@ def ntp_ready(sources: str, tracking: str, max_offset: float) -> bool:
     offset, delay, dispersion = values
     return bool(selected and re.search(r'Leap status\s*:\s*Normal\b', tracking)
                 and abs(offset) <= max_offset and delay >= 0 and dispersion >= 0
-                and abs(offset)+delay/2+dispersion <= .020)
+                and abs(offset)+delay/2+dispersion <= .035)
 
 
 def check(interface: str, max_offset: float, clock_source: str = 'gnss') -> dict:

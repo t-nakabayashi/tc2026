@@ -1,0 +1,34 @@
+{
+  "duration_s": 60,
+  "packet_metrics": {
+    "lidar": {
+      "time_type_counts": {
+        "1": 125044
+      },
+      "count": 125044,
+      "backwards": 2,
+      "max_timestamp_gap_s": 0.0006277561187744141,
+      "min_s": 0.00035834312438964844,
+      "median_s": 0.0012006759643554688,
+      "p99_s": 0.00180816650390625,
+      "max_s": 0.0025320053100585938,
+      "stdev_s": 0.0002650296303777817
+    },
+    "imu": {
+      "time_type_counts": {
+        "1": 12000
+      },
+      "count": 12000,
+      "backwards": 0,
+      "max_timestamp_gap_s": 0.0059969425201416016,
+      "min_s": -0.0002853870391845703,
+      "median_s": 0.00027370452880859375,
+      "p99_s": 0.0006203651428222656,
+      "max_s": 0.0008625984191894531,
+      "stdev_s": 0.00013235860429710396
+    }
+  },
+  "gate_ready_samples": 46,
+  "gate_samples": 60,
+  "precision_verified": false
+}

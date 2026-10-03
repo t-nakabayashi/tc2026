@@ -1,0 +1,13 @@
+Reference ID    : DAAC90D5 (vps-tyo3.orleans.ddnss.de)
+Stratum         : 3
+Ref time (UTC)  : Wed Sep 23 02:38:55 2026
+System time     : 0.000736641 seconds fast of NTP time
+Last offset     : +0.000744266 seconds
+RMS offset      : 0.003016474 seconds
+Frequency       : 11.733 ppm slow
+Residual freq   : +0.131 ppm
+Skew            : 7.556 ppm
+Root delay      : 0.011666604 seconds
+Root dispersion : 0.001033117 seconds
+Update interval : 65.0 seconds
+Leap status     : Normal

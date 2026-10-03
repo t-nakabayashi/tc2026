@@ -20,7 +20,7 @@ setup(
         ('share/' + package_name + '/config',
          ['config/default.yaml']),
         ('share/' + package_name + '/docs', glob('docs/*.md')),
-        ('share/' + package_name + '/tools', glob('tools/*.sh')),
+        ('share/' + package_name + '/tools', glob('tools/*.sh') + glob('tools/*.py')),
     ],
     install_requires=['setuptools', 'pyserial'],
     zip_safe=True,

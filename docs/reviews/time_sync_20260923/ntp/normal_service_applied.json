@@ -1,0 +1,32 @@
+{
+  "checked_unix": 1790131510.8812478,
+  "checked_monotonic": 92372.684893775,
+  "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+  "ready": true,
+  "clock_source": "ntp",
+  "clock_ready": true,
+  "gnss_clock_ready": false,
+  "ptp_running": true,
+  "packet_metrics": {
+    "lidar": {
+      "count": 10420,
+      "ready": true,
+      "minor_backwards": 0,
+      "min_s": 0.0006666183471679688,
+      "p50_s": 0.0011963844299316406,
+      "p99_s": 0.00176239013671875,
+      "max_s": 0.002194643020629883
+    },
+    "imu": {
+      "count": 999,
+      "ready": true,
+      "minor_backwards": 0,
+      "min_s": 2.384185791015625e-05,
+      "p50_s": 0.0002655982971191406,
+      "p99_s": 0.0006372928619384766,
+      "max_s": 0.0006883144378662109
+    }
+  },
+  "precision_verified": false,
+  "note": "Receive latency is not an independently measured absolute clock offset."
+}

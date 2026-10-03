@@ -1,0 +1,11 @@
+{
+  "samples": 36,
+  "error_bound_min_s": 0.0070372765,
+  "error_bound_max_s": 0.0179125955,
+  "error_bound_final_s": 0.0073148104999999995,
+  "max_remaining_correction_s": 0.001560243,
+  "references": [
+    "Reference ID    : 7C860F53 (240b:4009:23a:c000:5714:c9b6:c924:8bc5)",
+    "Reference ID    : DAAC90D5 (vps-tyo3.orleans.ddnss.de)"
+  ]
+}

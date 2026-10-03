@@ -77,7 +77,7 @@ def test_real_launch_has_no_simulator_and_sim_has_one_fusion(monkeypatch, tmp_pa
         assert ui['arguments'] == ['--business-environment',
                                    'デジタルツイン' if mode == 'simulation' else '実機（融合）']
         # UIのGNSS診断購読も、融合・座標変換と同じgps_baseへ向ける。
-        base = '/rtk_gps' if mode == 'simulation' else '/rtk_gps/rtk_gps_um982_node'
+        base = '/rtk_gps'
         remaps = dict(ui['remappings'])
         assert remaps['rtk_gps/rtk_status'] == base+'/rtk_status'
         assert remaps['rtk_gps/ntrip_status'] == base+'/ntrip_status'
@@ -93,6 +93,10 @@ def test_gui_survey_uses_selected_site_and_disables_duplicate_ui(monkeypatch, tm
     calls = []
     monkeypatch.setattr(module, 'prepare_real', lambda *args, **kwargs: calls.append((args, kwargs)))
     monkeypatch.setattr(module, 'get_package_share_directory', lambda _: str(tmp_path))
+    monkeypatch.setattr(module, 'read_yaml', lambda _: {
+        'sites': {'inagi': {'default_station': 'none', 'stations': ['none']},
+                  'tsukuba': {'default_station': 'none', 'stations': ['none']}},
+        'stations': {'none': {'label': 'NTRIPなし'}}})
     monkeypatch.setenv('ROS_DOMAIN_ID', '0')
     context = LaunchContext()
     context.launch_configurations.update(site=site, station='NTRIPなし', output_root=str(tmp_path))

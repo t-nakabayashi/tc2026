@@ -24,8 +24,8 @@ GNSS driver 由来 topic を購読し、GNSS 単独の LLH pose と ENU pose を
 | Publish | `/localization/pose_enu` | `geometry_msgs/msg/PoseWithCovarianceStamped` | 単体launch既定のGNSS単独ENU pose。 |
 | Publish | `/geo/map_projection` | `tc_geo_msgs/msg/MapProjection` | ENU/LLH 変換条件。 |
 
-共通実機起動ではGNSS入力を `/rtk_gps/rtk_gps_um982_node/fix` と
-`/rtk_gps/rtk_gps_um982_node/rtk_status` に接続します。
+共通実機起動ではGNSS入力を `/rtk_gps/fix` と
+`/rtk_gps/rtk_status` に接続します。
 共通起動ではGNSS単独出力を `/gnss/pose_enu` へ分離し、`/localization/pose_enu` は
 `gnss_lio_fusion` が配信します。融合はNavSatFixとRtkStatusを直接購読します。
 この単体launchを融合と併用するときは `gnss_pose_enu_topic:=/gnss/pose_enu` を指定してください。

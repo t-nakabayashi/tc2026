@@ -104,6 +104,32 @@ def test_ntp_trial_requires_selected_fresh_server_and_error_bound():
     for bad in [sources.replace('^*','^?'), sources.replace('377 12','376 12'),
                 sources.replace('377 12','377 129'), sources.replace('377 12','377 2m')]:
         assert not trial.ntp_ready(bad, tracking, .005)
-    for bad in [tracking.replace('0.010','0.100'), tracking.replace('0.002','0.030'),
+    for bad in [tracking.replace('0.010','0.100'), tracking.replace('0.002','0.040'),
                 tracking.replace('Normal','Not synchronised'), TRACKING]:
         assert not trial.ntp_ready(sources, bad, .005)
+
+
+@pytest.mark.parametrize('error,ready', [(.020001, True), (.034999, True),
+                                       (.035, True), (.035001, False)])
+def test_ntp_estimated_error_limit_is_35_ms(error, ready):
+    sources = '^* 192.0.2.1 2 7 377 12 +0ms'
+    tracking = ('System time : 0 seconds\nLeap status : Normal\n'
+                f'Root delay : 0 seconds\nRoot dispersion : {error} seconds\n')
+    assert trial.ntp_ready(sources, tracking, .005) is ready
+
+
+def test_ntp_error_budget_includes_offset_delay_and_dispersion():
+    sources = '^* 192.0.2.1 2 7 377 12 +2ms'
+    tracking = (TRACKING + 'Root delay : 0.040 seconds\n'
+                'Root dispersion : 0.012 seconds\n')
+    assert trial.ntp_ready(sources, tracking, .005)
+    assert not trial.ntp_ready(sources, tracking.replace('0.012', '0.014'), .005)
+    assert not trial.ntp_ready(sources, tracking.replace('0.002', '0.006'), .005)
+
+
+def test_ntp_maxpoll_seven_keeps_normal_cycle_fresh_but_rejects_stale_data():
+    tracking = TRACKING + 'Root delay : 0.010 seconds\nRoot dispersion : 0.002 seconds\n'
+    for age in (0, 127, 128, 129, 255, 256):
+        assert trial.ntp_ready(f'^* 192.0.2.1 2 7 377 {age} +2ms', tracking, .005)
+    for age in (257, 653):
+        assert not trial.ntp_ready(f'^* 192.0.2.1 2 7 377 {age} +2ms', tracking, .005)

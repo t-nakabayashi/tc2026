@@ -55,6 +55,20 @@ def test_update_plan_populates_node_combo_with_display_names(qt_app):
     assert card._node_combo.itemData(0) == 'rtk_gps_um982'
 
 
+def test_running_gnss_remains_stoppable_after_switching_to_integrated_preset(qt_app):
+    card = LaunchControlCard()
+    card.update_plan(environment='実機', drive_mode='手動走行',
+                     ordered_profile_ids=['icart_real_survey'], profiles_by_id={},
+                     active_profile_ids=['rtk_gps_um982'])
+    card._node_combo.setCurrentIndex(card._node_combo.findData('rtk_gps_um982'))
+    received = []
+    card.stop_requested.connect(received.append)
+    card._on_stop_selected_clicked()
+    assert received == ['rtk_gps_um982']
+    assert card._ordered_profile_ids == ['icart_real_survey']
+    assert '起動予定外・稼働中' in card._node_combo.currentText()
+
+
 def test_launch_all_requested_carries_ordered_profile_ids(qt_app):
     card = LaunchControlCard()
     card.update_plan(

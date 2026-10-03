@@ -19,8 +19,17 @@ def clock_sync_status(path='/run/icart-clock/status.json', *, mono=None, boot_id
             return False, 'PCの時刻同期がNTP設定になっていません。'
         if state.get('ready') is True:
             return True, ''
+        if state.get('status_version') != 2:
+            return False, '時刻同期サービスの更新が必要です。NTP・有線LANの判定を分離したサービスを適用してください。'
+        if state.get('check_error') or state.get('tools_ready') is not True:
+            return False, '時刻同期の確認処理に異常があります。時刻同期サービスを確認してください。'
         if state.get('clock_ready') is not True:
-            return False, 'PCのNTP同期が未成立です。ネット接続と時刻同期サービスを確認してください。'
+            reason = 'PCのNTP同期の品質条件が未成立です。ネット接続・応答の鮮度・時刻誤差を確認してください。'
+            if state.get('link_ready') is not True:
+                reason += ' LiDAR用有線LANも未接続です。'
+            return False, reason
+        if state.get('link_ready') is not True:
+            return False, 'LiDAR用有線LANが未接続です。LiDAR・スイッチの電源とLANケーブルを確認してください。'
         if state.get('ptp_running') is not True:
             return False, 'LiDARへのPTP時刻配信を待っています。'
         return False, 'LiDAR・IMUの時刻同期を待っています。センサの電源・接続を確認してください。'

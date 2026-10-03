@@ -103,8 +103,11 @@ def serve(interface, lidar_ip, directory, clock_source='ntp'):
                     atomic_status(status,dict(checked_unix=time.time(),checked_monotonic=mono,
                         boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
                         ready=bool(clock_ok and proc is not None and proc.poll() is None and packet_ok),
-                        clock_source=clock_source,clock_ready=clock_ok,
-                        gnss_clock_ready=clock_ok if clock_source == 'gnss' else False,ptp_running=proc is not None and proc.poll() is None,
+                        status_version=2,clock_source=clock_source,
+                        clock_ready=state['clock_ready'],link_ready=state['link'],
+                        tools_ready=all(state['tools'].values()),check_error=state.get('error'),
+                        gnss_clock_ready=state['clock_ready'] if clock_source == 'gnss' else False,
+                        ptp_running=proc is not None and proc.poll() is None,
                         packet_metrics=metrics,precision_verified=False,
                         note='Receive latency is not an independently measured absolute clock offset.'))
                     next_check=time.monotonic()+1.

@@ -147,12 +147,13 @@ class RobotConsoleNode(Node):
         self._core = core
         core.survey_conflict_check = lambda: set(self.get_node_names()) & {
             'ypspur_node', 'drive_cmd_mux_node', 'manual_teleop_node',
-            'fastlio_mapping', 'gnss_lio_fusion', 'route_survey'}
+            'fastlio_mapping', 'gnss_lio_fusion', 'route_survey', 'rtk_gps_um982_node',
+            'livox_lidar_publisher', 'livox_ros_driver2_node', 'urg_node', 'usb_cam', 'joy_node'}
+        core.gnss_conflict_check = lambda: set(self.get_node_names()) & {'rtk_gps_um982_node'}
         self._survey_pub = self.create_publisher(String, '/route_survey/command', 10)
         core.survey_publisher = lambda value: self._survey_pub.publish(String(data=value))
         self.create_subscription(String, '/route_survey/status', core.update_survey_status, 10)
-        # GNSS診断は実機のUM982ドライバがnode private名で配信する。起動側が
-        # `gnss_namespace` に応じてremapするため、ここでは相対名で購読する。
+        # 実機・模擬とも /rtk_gps の公開名を使用し、明示remapにも対応する。
         self.create_subscription(String, 'rtk_gps/ntrip_status', core.update_ntrip_status, 10)
         self.create_subscription(Bool, '/fusion/gnss_dropout_active', self._core.update_gnss_dropout, 10)
         self.create_subscription(

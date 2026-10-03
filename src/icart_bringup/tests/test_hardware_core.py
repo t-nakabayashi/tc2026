@@ -101,12 +101,46 @@ def test_real_hardware_graph_has_expected_drivers_and_no_mux(monkeypatch, tmp_pa
     livox = next(k for k in drivers if k['package'] == 'livox_ros_driver2')
     assert livox['parameters'][0]['xfer_format'] == 1
     assert livox['namespace'] == 'mid360'
+    gnss = next(k for k in drivers if k['package'] == 'rtk_gps_um982')
+    assert gnss['namespace'] == 'rtk_gps'
+    wheel = next(k for k in drivers if k['package'] == 'ypspur_ros2')
+    assert ('odom', '/ypspur_ros/odom') in wheel['remappings']
+    urg = next(k for k in drivers if k['package'] == 'urg_node')
+    assert urg.get('namespace', '') == ''
+    assert urg['parameters'][0]['laser_frame_id'] == 'laser'
     camera = next(k for k in drivers if k['package'] == 'usb_cam')
     assert camera['remappings'] == [('image_raw', '/usb_cam/image_raw')]
     assert camera['parameters'][0]['video_device'] == str(device)
     sensor_tfs = [k for k in captured if k['package'] == 'tf2_ros']
     assert len(sensor_tfs) == 5
     assert all('body' not in k['arguments'] for k in sensor_tfs)
+
+
+@pytest.mark.parametrize('filename,xfer_format', [('msg_MID360_launch.py', 1), ('rviz_MID360_launch.py', 0)])
+def test_mid360_standalone_and_lio_use_shared_topics(monkeypatch, filename, xfer_format):
+    import yaml
+    path = ROOT/'src/livox_ros_driver2/launch'/filename
+    spec = importlib.util.spec_from_file_location('mid360_standalone', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    captured = []
+    from launch_ros.actions import Node
+    class Capture(Node):
+        def __init__(self, **kwargs):
+            captured.append(kwargs)
+            super().__init__(**kwargs)
+    monkeypatch.setattr(module, 'Node', Capture)
+    module.generate_launch_description()
+    assert captured[0]['namespace'] == 'mid360'
+    params = {key: value for item in captured[0]['parameters'] for key, value in item.items()}
+    assert params['frame_id'] == 'mid360_frame' and params['xfer_format'] == xfer_format
+    if xfer_format == 0:
+        display = Path(module.rviz_config_path).read_text()
+        assert 'Topic: /mid360/livox/lidar' in display
+        assert 'Fixed Frame: mid360_frame' in display
+    lio = yaml.safe_load((ROOT/'src/FAST_LIO/config/mid360.yaml').read_text())
+    assert lio['/**']['ros__parameters']['common']['lid_topic'] == '/mid360/livox/lidar'
+    assert lio['/**']['ros__parameters']['common']['imu_topic'] == '/mid360/livox/imu'
 
 
 def test_custom_survey_projection_is_preserved(tmp_path):

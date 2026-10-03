@@ -108,6 +108,7 @@ class LaunchControlCard(QtWidgets.QGroupBox):
         drive_mode: str,
         ordered_profile_ids: List[str],
         profiles_by_id: Dict[str, LaunchProfile],
+        active_profile_ids: Optional[List[str]] = None,
     ) -> None:
         """起動・設定タブの業務モードと起動予定ノード一覧を反映する。"""
 
@@ -118,9 +119,13 @@ class LaunchControlCard(QtWidgets.QGroupBox):
         current = self._node_combo.currentData()
         self._node_combo.blockSignals(True)
         self._node_combo.clear()
-        for profile_id in self._ordered_profile_ids:
+        visible = self._ordered_profile_ids + [pid for pid in (active_profile_ids or [])
+                                               if pid not in self._ordered_profile_ids]
+        for profile_id in visible:
             profile = profiles_by_id.get(profile_id)
             label = profile.display_name if profile else profile_id
+            if profile_id not in self._ordered_profile_ids:
+                label += '（起動予定外・稼働中）'
             self._node_combo.addItem(label, profile_id)
         if current is not None:
             index = self._node_combo.findData(current)

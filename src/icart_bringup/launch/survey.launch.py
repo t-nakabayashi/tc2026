@@ -14,7 +14,7 @@ def setup(context):
     session = LaunchConfiguration('session').perform(context)
     data = load_session(Path(session), environment)
     gps = '/rtk_gps' if environment == 'simulation' else data.get(
-        'gnss_namespace', '/rtk_gps/rtk_gps_um982_node')
+        'gnss_namespace', '/rtk_gps')
     joy_input = LaunchConfiguration('joy_input').perform(context)
     actions = [IncludeLaunchDescription(PythonLaunchDescriptionSource(str(
         Path(get_package_share_directory('icart_bringup'))/'launch/bringup.launch.py')),

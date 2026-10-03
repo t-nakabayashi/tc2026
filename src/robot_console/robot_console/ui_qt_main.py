@@ -43,7 +43,12 @@ def _parse_args(argv: List[str]) -> argparse.Namespace:
     )
     parser.add_argument('--business-environment', choices=['実機（融合）', 'デジタルツイン'],
                         help='共通起動から渡す初期環境。未指定なら従来の初期値を使います')
+    parser.add_argument('--start-gnss', action='store_true', help='明示した地域・補正局でGNSSのみ起動する')
+    parser.add_argument('--gnss-site', choices=['稲城', 'つくば'])
+    parser.add_argument('--gnss-station', default='地域の既定局')
     known, _ = parser.parse_known_args(argv)
+    if known.start_gnss and not known.gnss_site:
+        parser.error('--start-gnssには--gnss-siteが必要です')
     return known
 
 
@@ -74,6 +79,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     timer.start(SNAPSHOT_POLL_MS)
 
     window.show()
+    if args.start_gnss:
+        window.launch_settings_tab.set_business_mode('実機', '手動走行')
+        window.launch_settings_tab.configure_gnss(args.gnss_site, args.gnss_station)
+        QtCore.QTimer.singleShot(0, lambda: core.request_launch('rtk_gps_um982'))
     # launchからの終了通知をQtの終了イベントへ変換し、ROSスレッドも停止する。
     previous = {sig: signal.signal(sig, lambda *_: app.quit())
                 for sig in (signal.SIGINT, signal.SIGTERM)}

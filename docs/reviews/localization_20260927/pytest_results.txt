@@ -1,0 +1,24 @@
+........................................................................ [ 32%]
+........................................................................ [ 65%]
+..........................F............................................. [ 97%]
+.....                                                                    [100%]
+=================================== FAILURES ===================================
+_____________ test_icart_middle_calibration_and_three_layers_agree _____________
+
+    def test_icart_middle_calibration_and_three_layers_agree():
+        root=Path(__file__).resolve().parents[3]
+        cfg=yaml.safe_load((root/'src/ypspur_ros2/config/default.yaml').read_text())['/ypspur_node']['ros__parameters']
+        nav=yaml.safe_load((root/'src/robot_navigator/params/default.yaml').read_text())['robot_navigator']['ros__parameters']
+        raw=(root/'src/ypspur_ros2/config/icart-middle.param').read_text()
+        hardware={r.split()[0]:float(r.split()[1]) for r in raw.splitlines() if r.strip() and not r.startswith('#')}
+        assert cfg['acceleration_max']['linear']==nav['max_acc_v']==.7
+        assert cfg['deceleration_max']['linear']==nav['max_decel_v']==hardware['MAX_ACC_V']==1.5
+        assert cfg['velocity_max']['linear']==nav['max_vel']<=hardware['MAX_VEL']
+        assert cfg['velocity_max']['angular']==nav['max_w']<=hardware['MAX_W']
+>       assert cfg['acceleration_max']['angular']==nav['max_acc_w']<=hardware['MAX_ACC_W']
+E       assert 1.5 == 0.6
+
+src/robot_navigator/tests/test_braking.py:55: AssertionError
+=========================== short test summary info ============================
+FAILED src/robot_navigator/tests/test_braking.py::test_icart_middle_calibration_and_three_layers_agree
+1 failed, 220 passed in 10.20s

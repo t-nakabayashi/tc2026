@@ -140,12 +140,8 @@ def prepare_real(share: Path, planner_share: Path, fastlio_share: Path, livox_sh
     write_yaml(output/'geometry.yaml', geo)
     write_yaml(output/'station.yaml', dict(site=site, station=station,
                checked_date=catalog['checked_date'], details=catalog['stations'][station]))
-    gnss = {'serial.port': config['gnss']['serial_port'], 'serial.baud': config['gnss']['baud'],
-            'ntrip.site': site, 'ntrip.station_id': station,
-            'ntrip.station_label': catalog['stations'][station]['label'],
-            'frame_id': 'gnss_main', 'stamp_source': 'gnss_utc',
-            'time_sync.enabled': config['gnss']['time_sync_enabled'],
-            **{'ntrip.'+key: value for key, value in ntrip.items()}}
+    from .gnss_config import gnss_parameters
+    gnss = gnss_parameters(catalog, config, site, station, custom)
     write_yaml(output/'um982.yaml', {'/rtk_gps/rtk_gps_um982_node': {'ros__parameters': gnss}}, True)
     fastlio = read_yaml(fastlio_share/'config/mid360.yaml')
     params = fastlio['/**']['ros__parameters']
@@ -185,7 +181,7 @@ def prepare_real(share: Path, planner_share: Path, fastlio_share: Path, livox_sh
         start_label=str(start), goal_label=str(goal), hardware_config='hardware.yaml',
         hardware_launch=str((share/'launch/hardware.launch.py').resolve()),
         fastlio_config='fastlio.yaml', fusion_params='fusion.yaml', recorder_params='recorder.yaml',
-        gnss_namespace='/rtk_gps/rtk_gps_um982_node', real_domain_id=0, simulation_domain_id=86,
+        gnss_namespace='/rtk_gps', real_domain_id=0, simulation_domain_id=86,
         site=site, rtk_station=station, route_source=str(route_dir),
         route_review_required=route_directory is None))
 

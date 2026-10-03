@@ -113,6 +113,7 @@ class ConsoleCore:
         self._survey_received = float('-inf')
         self.survey_publisher = None
         self.survey_conflict_check = None
+        self.gnss_conflict_check = None
 
         self._profile_store = profile_store or LaunchProfileStore()
         self._profiles: List[LaunchProfile] = self._profile_store.load()
@@ -370,10 +371,12 @@ class ConsoleCore:
                      (profile_id in integrated_ids or pid in integrated_ids)]
         if profile_id in integrated_ids and self.survey_conflict_check:
             conflicts += list(self.survey_conflict_check())
+        if profile_id == 'rtk_gps_um982' and profile_id not in active and self.gnss_conflict_check:
+            conflicts += list(self.gnss_conflict_check())
         error = ''
         if conflicts:
             error = '構成が重複します。先に起動中の項目を停止してください: ' + ', '.join(conflicts)
-        elif profile_id == survey_id and (resolved_overrides or {}).get('site') not in ('稲城', 'つくば'):
+        elif profile_id in (survey_id, 'rtk_gps_um982') and (resolved_overrides or {}).get('site') not in ('稲城', 'つくば'):
             error = '起動・設定で場所（稲城／つくば）を選択してください'
         if not error and profile_id == 'icart_recorded_route':
             try:

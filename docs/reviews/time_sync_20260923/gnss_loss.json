@@ -1,0 +1,439 @@
+{
+  "elapsed_s": 7.005759392995969,
+  "watch_exit_code": 1,
+  "watch_output": "\u6642\u523b\u540c\u671f\u6761\u4ef6\u3092\u55aa\u5931\u3057\u307e\u3057\u305f\u3002\u8d70\u884c\u30fb\u4f4d\u7f6e\u63a8\u5b9a\u30b9\u30bf\u30c3\u30af\u3092\u505c\u6b62\u3057\u307e\u3059\n",
+  "final_state": {
+    "checked_unix": 1790130521.3942761,
+    "checked_monotonic": 91383.203167375,
+    "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+    "ready": false,
+    "gnss_clock_ready": false,
+    "ptp_running": false,
+    "packet_metrics": {
+      "lidar": {
+        "count": 0,
+        "ready": false
+      },
+      "imu": {
+        "count": 0,
+        "ready": false
+      }
+    },
+    "precision_verified": false,
+    "note": "Receive latency is not an independently measured absolute clock offset."
+  },
+  "samples": [
+    {
+      "checked_unix": 1790130514.2610464,
+      "checked_monotonic": 91376.065698325,
+      "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+      "ready": true,
+      "gnss_clock_ready": true,
+      "ptp_running": true,
+      "packet_metrics": {
+        "lidar": {
+          "count": 10424,
+          "ready": true,
+          "min_s": 0.0006067752838134766,
+          "p50_s": 0.0011556148529052734,
+          "p99_s": 0.0017521381378173828,
+          "max_s": 0.0023458003997802734
+        },
+        "imu": {
+          "count": 1000,
+          "ready": true,
+          "min_s": -5.7697296142578125e-05,
+          "p50_s": 0.00023102760314941406,
+          "p99_s": 0.0005888938903808594,
+          "max_s": 0.0006384849548339844
+        }
+      },
+      "precision_verified": false,
+      "note": "Receive latency is not an independently measured absolute clock offset."
+    },
+    {
+      "checked_unix": 1790130514.2610464,
+      "checked_monotonic": 91376.065698325,
+      "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+      "ready": true,
+      "gnss_clock_ready": true,
+      "ptp_running": true,
+      "packet_metrics": {
+        "lidar": {
+          "count": 10424,
+          "ready": true,
+          "min_s": 0.0006067752838134766,
+          "p50_s": 0.0011556148529052734,
+          "p99_s": 0.0017521381378173828,
+          "max_s": 0.0023458003997802734
+        },
+        "imu": {
+          "count": 1000,
+          "ready": true,
+          "min_s": -5.7697296142578125e-05,
+          "p50_s": 0.00023102760314941406,
+          "p99_s": 0.0005888938903808594,
+          "max_s": 0.0006384849548339844
+        }
+      },
+      "precision_verified": false,
+      "note": "Receive latency is not an independently measured absolute clock offset."
+    },
+    {
+      "checked_unix": 1790130515.2780344,
+      "checked_monotonic": 91377.082345854,
+      "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+      "ready": true,
+      "gnss_clock_ready": true,
+      "ptp_running": true,
+      "packet_metrics": {
+        "lidar": {
+          "count": 10423,
+          "ready": true,
+          "min_s": 0.0006067752838134766,
+          "p50_s": 0.0011551380157470703,
+          "p99_s": 0.0017497539520263672,
+          "max_s": 0.0023458003997802734
+        },
+        "imu": {
+          "count": 1000,
+          "ready": true,
+          "min_s": -5.7697296142578125e-05,
+          "p50_s": 0.00024080276489257812,
+          "p99_s": 0.0005857944488525391,
+          "max_s": 0.0007083415985107422
+        }
+      },
+      "precision_verified": false,
+      "note": "Receive latency is not an independently measured absolute clock offset."
+    },
+    {
+      "checked_unix": 1790130515.2780344,
+      "checked_monotonic": 91377.082345854,
+      "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+      "ready": true,
+      "gnss_clock_ready": true,
+      "ptp_running": true,
+      "packet_metrics": {
+        "lidar": {
+          "count": 10423,
+          "ready": true,
+          "min_s": 0.0006067752838134766,
+          "p50_s": 0.0011551380157470703,
+          "p99_s": 0.0017497539520263672,
+          "max_s": 0.0023458003997802734
+        },
+        "imu": {
+          "count": 1000,
+          "ready": true,
+          "min_s": -5.7697296142578125e-05,
+          "p50_s": 0.00024080276489257812,
+          "p99_s": 0.0005857944488525391,
+          "max_s": 0.0007083415985107422
+        }
+      },
+      "precision_verified": false,
+      "note": "Receive latency is not an independently measured absolute clock offset."
+    },
+    {
+      "checked_unix": 1790130516.3056073,
+      "checked_monotonic": 91378.099040977,
+      "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+      "ready": true,
+      "gnss_clock_ready": true,
+      "ptp_running": true,
+      "packet_metrics": {
+        "lidar": {
+          "count": 10423,
+          "ready": true,
+          "min_s": 0.0006244182586669922,
+          "p50_s": 0.0011556148529052734,
+          "p99_s": 0.0017533302307128906,
+          "max_s": 0.002223968505859375
+        },
+        "imu": {
+          "count": 1000,
+          "ready": true,
+          "min_s": -5.793571472167969e-05,
+          "p50_s": 0.00024175643920898438,
+          "p99_s": 0.0005893707275390625,
+          "max_s": 0.0007083415985107422
+        }
+      },
+      "precision_verified": false,
+      "note": "Receive latency is not an independently measured absolute clock offset."
+    },
+    {
+      "checked_unix": 1790130516.3056073,
+      "checked_monotonic": 91378.099040977,
+      "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+      "ready": true,
+      "gnss_clock_ready": true,
+      "ptp_running": true,
+      "packet_metrics": {
+        "lidar": {
+          "count": 10423,
+          "ready": true,
+          "min_s": 0.0006244182586669922,
+          "p50_s": 0.0011556148529052734,
+          "p99_s": 0.0017533302307128906,
+          "max_s": 0.002223968505859375
+        },
+        "imu": {
+          "count": 1000,
+          "ready": true,
+          "min_s": -5.793571472167969e-05,
+          "p50_s": 0.00024175643920898438,
+          "p99_s": 0.0005893707275390625,
+          "max_s": 0.0007083415985107422
+        }
+      },
+      "precision_verified": false,
+      "note": "Receive latency is not an independently measured absolute clock offset."
+    },
+    {
+      "checked_unix": 1790130517.3238928,
+      "checked_monotonic": 91379.12706721,
+      "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+      "ready": true,
+      "gnss_clock_ready": true,
+      "ptp_running": true,
+      "packet_metrics": {
+        "lidar": {
+          "count": 10421,
+          "ready": true,
+          "min_s": 0.0006244182586669922,
+          "p50_s": 0.0011630058288574219,
+          "p99_s": 0.0017609596252441406,
+          "max_s": 0.002223968505859375
+        },
+        "imu": {
+          "count": 1000,
+          "ready": true,
+          "min_s": -5.793571472167969e-05,
+          "p50_s": 0.0002415180206298828,
+          "p99_s": 0.0005936622619628906,
+          "max_s": 0.0007083415985107422
+        }
+      },
+      "precision_verified": false,
+      "note": "Receive latency is not an independently measured absolute clock offset."
+    },
+    {
+      "checked_unix": 1790130517.3238928,
+      "checked_monotonic": 91379.12706721,
+      "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+      "ready": true,
+      "gnss_clock_ready": true,
+      "ptp_running": true,
+      "packet_metrics": {
+        "lidar": {
+          "count": 10421,
+          "ready": true,
+          "min_s": 0.0006244182586669922,
+          "p50_s": 0.0011630058288574219,
+          "p99_s": 0.0017609596252441406,
+          "max_s": 0.002223968505859375
+        },
+        "imu": {
+          "count": 1000,
+          "ready": true,
+          "min_s": -5.793571472167969e-05,
+          "p50_s": 0.0002415180206298828,
+          "p99_s": 0.0005936622619628906,
+          "max_s": 0.0007083415985107422
+        }
+      },
+      "precision_verified": false,
+      "note": "Receive latency is not an independently measured absolute clock offset."
+    },
+    {
+      "checked_unix": 1790130518.3422415,
+      "checked_monotonic": 91380.14518026,
+      "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+      "ready": true,
+      "gnss_clock_ready": true,
+      "ptp_running": true,
+      "packet_metrics": {
+        "lidar": {
+          "count": 10421,
+          "ready": true,
+          "min_s": 0.0006244182586669922,
+          "p50_s": 0.001173257827758789,
+          "p99_s": 0.0017828941345214844,
+          "max_s": 0.002223968505859375
+        },
+        "imu": {
+          "count": 1000,
+          "ready": true,
+          "min_s": -5.793571472167969e-05,
+          "p50_s": 0.0002524852752685547,
+          "p99_s": 0.0005936622619628906,
+          "max_s": 0.0007083415985107422
+        }
+      },
+      "precision_verified": false,
+      "note": "Receive latency is not an independently measured absolute clock offset."
+    },
+    {
+      "checked_unix": 1790130518.3422415,
+      "checked_monotonic": 91380.14518026,
+      "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+      "ready": true,
+      "gnss_clock_ready": true,
+      "ptp_running": true,
+      "packet_metrics": {
+        "lidar": {
+          "count": 10421,
+          "ready": true,
+          "min_s": 0.0006244182586669922,
+          "p50_s": 0.001173257827758789,
+          "p99_s": 0.0017828941345214844,
+          "max_s": 0.002223968505859375
+        },
+        "imu": {
+          "count": 1000,
+          "ready": true,
+          "min_s": -5.793571472167969e-05,
+          "p50_s": 0.0002524852752685547,
+          "p99_s": 0.0005936622619628906,
+          "max_s": 0.0007083415985107422
+        }
+      },
+      "precision_verified": false,
+      "note": "Receive latency is not an independently measured absolute clock offset."
+    },
+    {
+      "checked_unix": 1790130519.3613799,
+      "checked_monotonic": 91381.163194401,
+      "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+      "ready": true,
+      "gnss_clock_ready": true,
+      "ptp_running": true,
+      "packet_metrics": {
+        "lidar": {
+          "count": 10422,
+          "ready": true,
+          "min_s": 0.0006244182586669922,
+          "p50_s": 0.001180410385131836,
+          "p99_s": 0.0017964839935302734,
+          "max_s": 0.0022428035736083984
+        },
+        "imu": {
+          "count": 1000,
+          "ready": true,
+          "min_s": -5.793571472167969e-05,
+          "p50_s": 0.00025534629821777344,
+          "p99_s": 0.0006024837493896484,
+          "max_s": 0.0007083415985107422
+        }
+      },
+      "precision_verified": false,
+      "note": "Receive latency is not an independently measured absolute clock offset."
+    },
+    {
+      "checked_unix": 1790130519.3613799,
+      "checked_monotonic": 91381.163194401,
+      "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+      "ready": true,
+      "gnss_clock_ready": true,
+      "ptp_running": true,
+      "packet_metrics": {
+        "lidar": {
+          "count": 10422,
+          "ready": true,
+          "min_s": 0.0006244182586669922,
+          "p50_s": 0.001180410385131836,
+          "p99_s": 0.0017964839935302734,
+          "max_s": 0.0022428035736083984
+        },
+        "imu": {
+          "count": 1000,
+          "ready": true,
+          "min_s": -5.793571472167969e-05,
+          "p50_s": 0.00025534629821777344,
+          "p99_s": 0.0006024837493896484,
+          "max_s": 0.0007083415985107422
+        }
+      },
+      "precision_verified": false,
+      "note": "Receive latency is not an independently measured absolute clock offset."
+    },
+    {
+      "checked_unix": 1790130520.381525,
+      "checked_monotonic": 91382.183180553,
+      "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+      "ready": true,
+      "gnss_clock_ready": true,
+      "ptp_running": true,
+      "packet_metrics": {
+        "lidar": {
+          "count": 10421,
+          "ready": true,
+          "min_s": 0.0006244182586669922,
+          "p50_s": 0.0011835098266601562,
+          "p99_s": 0.001802206039428711,
+          "max_s": 0.0022449493408203125
+        },
+        "imu": {
+          "count": 1000,
+          "ready": true,
+          "min_s": -5.793571472167969e-05,
+          "p50_s": 0.0002567768096923828,
+          "p99_s": 0.0006024837493896484,
+          "max_s": 0.0007047653198242188
+        }
+      },
+      "precision_verified": false,
+      "note": "Receive latency is not an independently measured absolute clock offset."
+    },
+    {
+      "checked_unix": 1790130520.381525,
+      "checked_monotonic": 91382.183180553,
+      "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+      "ready": true,
+      "gnss_clock_ready": true,
+      "ptp_running": true,
+      "packet_metrics": {
+        "lidar": {
+          "count": 10421,
+          "ready": true,
+          "min_s": 0.0006244182586669922,
+          "p50_s": 0.0011835098266601562,
+          "p99_s": 0.001802206039428711,
+          "max_s": 0.0022449493408203125
+        },
+        "imu": {
+          "count": 1000,
+          "ready": true,
+          "min_s": -5.793571472167969e-05,
+          "p50_s": 0.0002567768096923828,
+          "p99_s": 0.0006024837493896484,
+          "max_s": 0.0007047653198242188
+        }
+      },
+      "precision_verified": false,
+      "note": "Receive latency is not an independently measured absolute clock offset."
+    },
+    {
+      "checked_unix": 1790130521.3942761,
+      "checked_monotonic": 91383.203167375,
+      "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+      "ready": false,
+      "gnss_clock_ready": false,
+      "ptp_running": false,
+      "packet_metrics": {
+        "lidar": {
+          "count": 0,
+          "ready": false
+        },
+        "imu": {
+          "count": 0,
+          "ready": false
+        }
+      },
+      "precision_verified": false,
+      "note": "Receive latency is not an independently measured absolute clock offset."
+    }
+  ]
+}

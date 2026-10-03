@@ -19,6 +19,8 @@ def load_session(filename: Path, environment: str) -> dict:
     data = yaml.safe_load(filename.read_text())
     if not isinstance(data, dict):
         raise ValueError('sessionはYAML mappingが必要')
+    if data.get('gnss_namespace') in (None, '/rtk_gps/rtk_gps_um982_node'):
+        data['gnss_namespace'] = '/rtk_gps'
     for key in ['projection_params', 'route_config', 'csv_base_dir']:
         if not data.get(key):
             raise ValueError(key+'が未設定')

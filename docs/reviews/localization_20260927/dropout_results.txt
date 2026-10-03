@@ -1,0 +1,12 @@
+[INFO] [1790442408.247945169] [gnss_lio_fusion]: 適応baseline・GNSS/LIO融合を開始する
+[INFO] [1790442408.569743433] [gnss_lio_fusion]: 融合状態: GPS_LIO
+[INFO] [1790442408.927700258] [gnss_lio_fusion]: 融合状態: GPS_WHEEL
+{
+  "pass_test": true,
+  "initial_wait_visible": true,
+  "pose_during_lio_dropout": true,
+  "command_during_lio_dropout": true,
+  "stopped_after_both_inputs_lost": true,
+  "pose_count": 36,
+  "wheel_fallback_count": 26
+}

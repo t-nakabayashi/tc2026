@@ -63,15 +63,15 @@ class Um982DriverNode(Node):
         self._hdop_sigma = float(p('hdop_sigma').value)
 
         self._pub_fix = (
-            self.create_publisher(NavSatFix, '~/fix', 10)
+            self.create_publisher(NavSatFix, 'fix', 10)
             if p('publish.navsatfix').value else None
         )
         self._pub_imu = (
-            self.create_publisher(Imu, '~/heading', 10)
+            self.create_publisher(Imu, 'heading', 10)
             if p('publish.imu_heading').value else None
         )
         self._pub_status = (
-            self.create_publisher(RtkStatus, '~/rtk_status', 10)
+            self.create_publisher(RtkStatus, 'rtk_status', 10)
             if p('publish.rtk_status').value else None
         )
 
@@ -85,7 +85,7 @@ class Um982DriverNode(Node):
             self._relay = RmcClockRelay(p('time_sync.chrony_socket').value)
             client_type = ClockRelayClient
             client_options['clock_relay'] = self._relay
-            self._pub_time = self.create_publisher(String, '~/time_sync', 10)
+            self._pub_time = self.create_publisher(String, 'time_sync', 10)
             self._time_timer = self.create_timer(1., self._publish_time_sync)
 
         self._client = client_type(
@@ -120,7 +120,7 @@ class Um982DriverNode(Node):
         self._ntrip_fields = {key: p('ntrip.'+key).value for key in (
             'enabled', 'host', 'port', 'mountpoint', 'station_id', 'station_label', 'site')}
         self._ntrip_status = NtripStatus()
-        self._pub_ntrip = self.create_publisher(String, '~/ntrip_status', 10)
+        self._pub_ntrip = self.create_publisher(String, 'ntrip_status', 10)
         self._ntrip_timer = self.create_timer(1., self._publish_ntrip_status)
 
         # シリアル接続と補正受信は外形（topic の鮮度）に現れないため自己申告する。

@@ -17,6 +17,7 @@ cp -a /etc/chrony/conf.d/um982.conf "$backup_dir/"
 if [[ -d /etc/systemd/system/icart-clock.service.d ]]; then
  cp -a /etc/systemd/system/icart-clock.service.d "$backup_dir/"
 fi
+python3 "$repo_dir/src/rtk_gps_um982/tools/configure_ntp_poll.py" --backup-directory "$backup_dir"
 systemctl stop icart-clock.service 2>/dev/null || true
 cat > /etc/chrony/conf.d/um982.conf <<'EOF'
 # RMC retained for diagnostics and GNSS date anchoring; never discipline PC.

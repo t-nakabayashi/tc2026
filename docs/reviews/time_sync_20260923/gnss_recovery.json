@@ -1,0 +1,31 @@
+{
+  "wait_s": 10.008237989997724,
+  "state": {
+    "checked_unix": 1790130556.7741601,
+    "checked_monotonic": 91418.575974277,
+    "boot_id": "baea2498-c197-43c0-be09-500b8ee75553",
+    "ready": true,
+    "gnss_clock_ready": true,
+    "ptp_running": true,
+    "packet_metrics": {
+      "lidar": {
+        "count": 8442,
+        "ready": true,
+        "min_s": 0.0006690025329589844,
+        "p50_s": 0.0011992454528808594,
+        "p99_s": 0.0017790794372558594,
+        "max_s": 0.0024733543395996094
+      },
+      "imu": {
+        "count": 810,
+        "ready": true,
+        "min_s": 6.198883056640625e-06,
+        "p50_s": 0.0002598762512207031,
+        "p99_s": 0.0005691051483154297,
+        "max_s": 0.0006706714630126953
+      }
+    },
+    "precision_verified": false,
+    "note": "Receive latency is not an independently measured absolute clock offset."
+  }
+}

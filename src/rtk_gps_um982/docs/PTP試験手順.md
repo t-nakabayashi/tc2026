@@ -25,6 +25,7 @@ flowchart LR
 | PTP互換形式 | ptp_minor_version 0 |
 | GNSS | stamp_source=gnss_utc、transport_delay_ms=0、time_sync.enabled=true |
 | chrony SOCK | /run/chrony/um982.sock、UM98、noselect |
+| 外部NTP問い合わせ間隔 | maxpoll 7（最大128秒）。監視の鮮度上限は256秒 |
 | 状態ファイル | /run/icart-clock/status.json |
 
 PTPマスターはPCで、ptp4lはPC時計を補正しない。phc2sysは使わない。
@@ -52,7 +53,7 @@ GUIの手動プリセットはreal_survey→survey→bringup、自律プリセ�
 | NTP時刻源 | 外部サーバが選択済み（^*）、直近応答成功、Leap status=Normal |
 | NTP鮮度 | 2ポーリング周期以内。下限16秒、上限256秒 |
 | PC残補正 | 絶対値5 ms以下 |
-| NTP推定誤差上限 | 絶対残補正＋root delay/2＋root dispersionが20 ms以下 |
+| NTP推定誤差上限 | 絶対残補正＋root delay/2＋root dispersionが35 ms以下 |
 | 点群・IMU | 両方time_type=1、直近5秒内に4秒以上の継続データ |
 | 受信継続 | 最新受信から0.2秒以内、受信間隔の最大0.2秒以下 |
 | パケット時刻 | カーネル受信時刻との差が−1〜10 ms |
@@ -73,6 +74,10 @@ NTP未成立、PTP配信待ち、点群・IMUの同期待ち、状態ファイ�
 一度同期が成立した後の異常は「時刻同期が失われました」と表示し、正常復帰で警告を消す。
 シミュレーションでは表示しない。警告表示は状態の読み取りだけを行い、時計や走行指令を変更しない。
 GUIコード更新の反映にはGUIの再起動が必要。
+監視ファイルの`clock_ready`はPC時計の品質条件、`link_ready`はLiDAR用有線LANのリンクを示す。
+有線LAN未接続時は専用の警告を表示し、NTP条件も未成立なら両方を表示する。
+`tools_ready`と`check_error`で確認処理の異常を区別する。
+判定を分離した状態形式は`status_version=2`。それ以外の形式で未成立の場合は、サービスの更新を案内する。
 
 ## 初回導入
 
@@ -89,12 +94,29 @@ sudo bash src/rtk_gps_um982/tools/install_clock_service.sh enp0s31f6 192.168.1.2
 prepare_clock_hostの出力先は新規ディレクトリを指定する。
 apply-hostはchrony設定と権限を準備し、makestepを無効化して時計をslewで補正する。
 install_clock_serviceは設定を退避し、RMCをnoselectに設定し、サービスを登録・起動する。
+既存のserver/pool/peer行にはmaxpollを最大7に設定する。minpollが7を超える場合も7に揃える。
+include/confdir/sourcedirで参照する既存ファイルも対象とし、設定の構文検証に失敗した場合は変更を戻す。
+後から追加するNTP源やDHCPで再生成するNTP源にもmaxpoll 7以下が必要。
 第2引数を省略した場合もLiDAR IPは192.168.1.201となる。
 以後の通常起動にsudoやPTPの手動起動は不要。
 
 SOCKのアクセス権はchronyの起動時に付与する。RuntimeDirectoryMode=0750と特権ExecStartPostを使用する。
 PTP管理ソケットは/run/icart-clockに置く。UFW有効時は専用NIC・LiDAR IPのUDP 319/320を許可する。
 このPCではNetworkManagerのchrony dispatcherがネット接続変化時にchronyc onofflineを実行する。
+
+## 導入済みサービスの更新
+
+走行・位置推定を停止し、ワークスペースで実行する。
+
+```bash
+sudo bash src/rtk_gps_um982/tools/update_clock_service.sh
+```
+
+この操作は既存の時刻源を維持して問い合わせ間隔を設定し、監視コードを配置する。
+原本は表示される`/var/backups/robot-clock-update-*`へ保存する。
+chronyとicart-clockを再起動するため、一時的に同期待ちとなる。
+NTP条件と有線リンクの復帰後にPTP配信は自動再開する。走行系は利用者が再起動する。
+GUIコードをビルド・配置した後はGUIも再起動する。
 
 ## ロボットを動かさない確認
 

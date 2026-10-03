@@ -39,6 +39,15 @@ def test_missing_projection_is_not_silently_replaced(tmp_path: Path) -> None:
         prepare(tmp_path, tmp_path/'session')
 
 
+def test_receiver_node_namespace_in_saved_session_resolves_to_public_topic_base(tmp_path):
+    for name in ('projection.yaml', 'route.yaml'):
+        (tmp_path/name).write_text('{}')
+    config = tmp_path/'session.yaml'
+    config.write_text(yaml.safe_dump(dict(projection_params='projection.yaml', route_config='route.yaml',
+        csv_base_dir='.', gnss_namespace='/rtk_gps/rtk_gps_um982_node')))
+    assert load_session(config, 'real')['gnss_namespace'] == '/rtk_gps'
+
+
 def test_simulation_does_not_require_real_driver_files(tmp_path: Path) -> None:
     """共有sessionに実車専用ファイル名があっても模擬環境では開かない."""
     trial = tmp_path/'trial'

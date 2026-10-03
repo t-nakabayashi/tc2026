@@ -92,7 +92,7 @@ profiles:
       - topic: /scan
         type: sensor_msgs/msg/LaserScan
         rate_hz: 10.0
-    user_arguments: [site, station, output_root]
+    user_arguments: [site, station, ntrip_config, output_root]
     default_arguments:
       site: 場所を選択
       station: 地域の既定局
@@ -153,9 +153,10 @@ profiles:
   - profile_id: rtk_gps_um982
     category: gps_gnss
     display_name: RTK GPS UM982
-    package: rtk_gps_um982
-    launch_file: rtk_gps_um982.launch.py
+    package: icart_bringup
+    launch_file: gnss.launch.py
     param_argument: config
+    param_package: rtk_gps_um982
     default_param: config/default.yaml
     launch_order: 20
     startup_group: real_robot_base
@@ -170,6 +171,13 @@ profiles:
       - topic: /rtk_gps/rtk_status
         type: rtk_gps_um982_msgs/msg/RtkStatus
         rate_hz: 5.0
+      - topic: /rtk_gps/ntrip_status
+        type: std_msgs/msg/String
+        rate_hz: 1.0
+    user_arguments: [site, station, ntrip_config]
+    default_arguments:
+      site: 場所を選択
+      station: 地域の既定局
 
   - profile_id: obstacle_route_sim
     category: simulation_base

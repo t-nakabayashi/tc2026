@@ -8,6 +8,7 @@ from PyQt5 import QtWidgets
 
 from ..core.console_core import ConsoleCore
 from ..core.snapshot_model import ConsoleSnapshot
+from ..utils import NodeLaunchStatus
 from .console_log_tab import ConsoleLogTab
 from .dashboard_tab import DashboardTab
 from .gnss_tab import GnssTab
@@ -166,6 +167,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.localization_sensor_tab.update_snapshot(snapshot)
         self.console_log_tab.update_snapshot(snapshot)
         self.launch_settings_tab.update_launch_states(snapshot.launch_profiles)
+        active = [pid for pid, state in snapshot.launch_profiles.items()
+                  if state.status in (NodeLaunchStatus.RUNNING, NodeLaunchStatus.STARTING,
+                                      NodeLaunchStatus.STOPPING)]
+        if active != getattr(self, '_active_profile_ids', []):
+            self._active_profile_ids = active
+            self._on_launch_plan_changed()
 
     def _on_launch_all_requested(self, profile_ids: List[str]) -> None:
         """起動予定ノード一覧（プラン）の一括起動要求を反映する。"""
@@ -205,6 +212,7 @@ class MainWindow(QtWidgets.QMainWindow):
             drive_mode=self.launch_settings_tab.drive_mode,
             ordered_profile_ids=list(self.launch_settings_tab.plan.ordered_profile_ids),
             profiles_by_id=self.launch_settings_tab.profiles_by_id,
+            active_profile_ids=getattr(self, '_active_profile_ids', []),
         )
 
     @staticmethod

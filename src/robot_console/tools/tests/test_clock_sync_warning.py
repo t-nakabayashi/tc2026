@@ -1,5 +1,27 @@
 import json
+import pytest
 from robot_console.core.clock_sync_status import clock_sync_status
+
+
+@pytest.mark.parametrize('change,expected,absent', [
+    ({'link_ready': False}, '有線LANが未接続', 'NTP同期の品質条件が未成立'),
+    ({'clock_ready': False}, 'NTP同期の品質条件が未成立', '有線LANも未接続'),
+    ({'clock_ready': False, 'link_ready': False}, '有線LANも未接続', 'PTP時刻配信を待って'),
+    ({'ptp_running': False}, 'PTP時刻配信を待って', 'NTP同期の品質条件が未成立'),
+    ({}, 'LiDAR・IMUの時刻同期を待って', 'NTP同期の品質条件が未成立'),
+    ({'tools_ready': False}, '確認処理に異常', 'NTP同期の品質条件が未成立'),
+    ({'check_error': 'failed'}, '確認処理に異常', 'NTP同期の品質条件が未成立'),
+    ({'status_version': None}, 'サービスの更新が必要', 'NTP同期の品質条件が未成立'),
+])
+def test_warning_identifies_failed_stage(tmp_path, change, expected, absent):
+    state = dict(ready=False, status_version=2, clock_source='ntp', boot_id='a',
+                 checked_monotonic=9, clock_ready=True, link_ready=True,
+                 tools_ready=True, ptp_running=True)
+    state.update(change)
+    path = tmp_path/'status.json'
+    path.write_text(json.dumps(state))
+    ready, reason = clock_sync_status(path, mono=10, boot_id='a')
+    assert not ready and expected in reason and absent not in reason
 
 
 def test_readiness_requires_live_ntp_status(tmp_path):

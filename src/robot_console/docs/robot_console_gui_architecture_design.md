@@ -35,7 +35,7 @@ pose_enu/pose_llh、cmd_vel、drive_mode_status、車輪odom、RTK/NTRIP診断�
 ConsoleCoreで重畳し、QtとHTMLは同じ画像とperception_decisionsを表示する。
 画像・overlayの購読はBEST_EFFORT、active_routeはRELIABLE / TRANSIENT_LOCAL / depth 1。
 RTK/NTRIP診断は相対名 `rtk_gps/rtk_status` と `rtk_gps/ntrip_status` で購読し、
-共通起動が実機private名または模擬公開名へremapする。
+実機・模擬・単独起動・共通起動とも `/rtk_gps/` 配下の公開名を使用する。
 トピック名はlaunch remapとROS側設定に従う。
 active_route等の保持される情報と、速度・センサ等の鮮度が必要な情報を区別する。
 

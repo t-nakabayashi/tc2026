@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import pytest
 from types import SimpleNamespace
 
 import pytest
@@ -890,3 +891,12 @@ def test_last_diagnostic_expires_even_if_no_replacement_array_arrives(monkeypatc
     health = _health(core, 'route_follower')
     assert health.health == FreshnessLevel.OK
     assert health.diagnostic_message == ''
+
+
+def test_gnss_rejects_external_receiver_before_opening_serial(monkeypatch):
+    core = _make_core()
+    core.update_launch_override('rtk_gps_um982', 'site', 'つくば')
+    core.gnss_conflict_check = lambda: ['rtk_gps_um982_node']
+    monkeypatch.setattr(core.launch_manager, 'launch', lambda *a, **kw: pytest.fail('duplicate GNSS'))
+    core.request_launch('rtk_gps_um982')
+    assert 'rtk_gps_um982_node' in core._launch_states['rtk_gps_um982'].error_message

@@ -67,7 +67,7 @@ _TOPIC_CONFIGS = [
         'rtk_status_topic',
         'rtk_gps/rtk_status',
         '/rtk_gps/rtk_status',
-        'RTK測位品質トピック（実機はUM982ドライバのprivate名を指定する）',
+        'RTK測位品質トピック（実機・模擬共通）',
     ),
     (
         'ntrip_status_topic',
@@ -109,12 +109,16 @@ def _launch_setup(context: LaunchContext, *args, **kwargs) -> List[Node]:
     ]
     # 正式UIはPyQt5版（robot_console_qt）である。ログ保存先はROSパラメータではなく
     # CLI引数で受け取る（ConsoleCoreをNode生成前に構築するため）。
+    arguments = ['--console-log-directory', log_dir]
+    if context.launch_configurations.get('start_gnss', 'false').lower() == 'true':
+        arguments += ['--start-gnss', '--gnss-site', LaunchConfiguration('gnss_site'),
+                      '--gnss-station', LaunchConfiguration('gnss_station')]
     node = Node(
         package='robot_console',
         executable='robot_console_qt',
         name='robot_console_qt',
         output='screen',
-        arguments=['--console-log-directory', log_dir],
+        arguments=arguments,
         remappings=remappings,
     )
     return [node]
@@ -132,4 +136,8 @@ def generate_launch_description() -> LaunchDescription:
         for arg_name, _, default, description in _TOPIC_CONFIGS
     ]
 
-    return LaunchDescription(topic_arguments + [OpaqueFunction(function=_launch_setup)])
+    return LaunchDescription(topic_arguments + [
+        DeclareLaunchArgument('start_gnss', default_value='false', choices=['true', 'false']),
+        DeclareLaunchArgument('gnss_site', default_value=''),
+        DeclareLaunchArgument('gnss_station', default_value='地域の既定局'),
+        OpaqueFunction(function=_launch_setup)])
