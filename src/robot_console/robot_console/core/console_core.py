@@ -362,7 +362,7 @@ class ConsoleCore:
             else (resolve_effective_overrides(profile, state) if state else None)
         )
         survey_id = 'icart_real_survey'
-        integrated_ids = {survey_id, 'icart_recorded_route'}
+        integrated_ids = {survey_id, 'icart_recorded_route', 'icart_icp_route'}
         active = [pid for pid, value in self._launch_states.items()
                   if value.status in (NodeLaunchStatus.RUNNING, NodeLaunchStatus.STARTING)]
         if profile_id in integrated_ids and profile_id in active:
@@ -378,7 +378,7 @@ class ConsoleCore:
             error = '構成が重複します。先に起動中の項目を停止してください: ' + ', '.join(conflicts)
         elif profile_id in (survey_id, 'rtk_gps_um982') and (resolved_overrides or {}).get('site') not in ('稲城', 'つくば'):
             error = '起動・設定で場所（稲城／つくば）を選択してください'
-        if not error and profile_id == 'icart_recorded_route':
+        if not error and profile_id in ('icart_recorded_route', 'icart_icp_route'):
             try:
                 from icart_bringup.recorded_route import inspect_recorded_route
                 inspect_recorded_route((resolved_overrides or {}).get('route_directory', ''))

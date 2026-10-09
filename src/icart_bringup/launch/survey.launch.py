@@ -27,6 +27,8 @@ def setup(context):
             *([data['recorder_params']] if data.get('recorder_params') else []),
             {'output_directory': LaunchConfiguration('output').perform(context),
              'projection_config': data['projection_params'],
+             'localization_mode': data.get('localization_mode', 'gnss'),
+             'icp_map_manifest': data.get('icp_map_manifest', ''),
              'gnss_fix_topic': gps+'/fix', 'gnss_status_topic': gps+'/rtk_status',
              'use_sim_time': environment=='simulation'}])]
     return actions

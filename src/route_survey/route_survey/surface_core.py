@@ -86,7 +86,7 @@ def surface_width(points, cell=.2, max_width=3., step=.06, margin=.35,
 
 
 class SurfaceWindow:
-    """GNSS補正を含まないLIO worldで短時間だけ蓄積。古い地面を安全扱いしない。"""
+    """指定した共通座標で短時間だけ蓄積。古い地面を安全扱いしない。"""
     def __init__(self, seconds=6.):
         if not np.isfinite(seconds) or not .5 <= seconds <= 15.:
             raise ValueError('点群保持時間は0.5-15秒')

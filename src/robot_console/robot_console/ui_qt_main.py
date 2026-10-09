@@ -4,7 +4,7 @@
 イベントループとは別スレッドのrclpy executorを起動する
 （robot_console_gui_architecture_design.md 14.1節）。`QTimer` で
 `ConsoleCore.build_snapshot()` を定期ポーリングし、`MainWindow.update_snapshot()`
-経由で5タブへ配布する。本entry pointが正式UIであり、旧tkinter版
+経由で監視タブへ配布する。本entry pointが正式UIであり、旧tkinter版
 （`robot_console`）は当面コードを残すが正式UIとしては扱わない。
 """
 
@@ -41,7 +41,7 @@ def _parse_args(argv: List[str]) -> argparse.Namespace:
             '未指定時は ROBOT_CONSOLE_LOG_DIR を参照します'
         ),
     )
-    parser.add_argument('--business-environment', choices=['実機（融合）', 'デジタルツイン'],
+    parser.add_argument('--business-environment', choices=['実機（融合）', '実機（ICP）', 'デジタルツイン'],
                         help='共通起動から渡す初期環境。未指定なら従来の初期値を使います')
     parser.add_argument('--start-gnss', action='store_true', help='明示した地域・補正局でGNSSのみ起動する')
     parser.add_argument('--gnss-site', choices=['稲城', 'つくば'])
@@ -71,6 +71,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     app.aboutToQuit.connect(ros_handle.stop)
 
     window = MainWindow(core=core)
+    app.aboutToQuit.connect(window.map_creation_tab.shutdown)
     if args.business_environment:
         window.launch_settings_tab.set_business_mode(args.business_environment, '自律走行')
 

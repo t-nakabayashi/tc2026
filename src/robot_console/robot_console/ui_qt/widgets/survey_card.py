@@ -40,17 +40,20 @@ class SurveyCard(QtWidgets.QGroupBox):
         connected = state.get('connected', False)
         active = state.get('active', False)
         pose = state.get('pose_fresh', False)
+        source = 'ICP' if state.get('localization_mode') == 'icp' else 'GNSS融合'
         if not connected:
             text = '記録ノード未接続（起動・設定から実機・手動走行を起動）'
         elif state.get('error'):
             text = '保存エラー: ' + state['error']
         elif active:
-            text = '● 記録中' + ('／融合位置の更新待ち' if not pose else '')
+            text = '● 記録中' + ('／自己位置の更新待ち' if not pose else '')
         elif state.get('saved'):
             text = '保存完了'
+        elif state.get('saving'):
+            text = '保存中'
         else:
-            text = '記録開始できます' if pose else '融合位置の受信待ち'
-        self.status.setText(text + (f"　{state.get('count', 0)}点" if connected else ''))
+            text = '記録開始できます' if pose else '自己位置の受信待ち'
+        self.status.setText(text + (f"　{state.get('count', 0)}点［{source}］" if connected else ''))
         self.start.setEnabled(connected and pose and not active and not state.get('error'))
         self.finish.setEnabled(connected and (active or bool(state.get('error'))))
         self.directory.setText(state.get('directory', '') if connected else '')

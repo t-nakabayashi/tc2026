@@ -164,6 +164,7 @@ class LaunchSettingsTab(QtWidgets.QWidget):
             state.simulator_enabled = entry.use_simulator_alternate
             for key, value in entry.overrides.items():
                 state.override_inputs[key] = value
+                self.argument_changed.emit(entry.profile_id, key, value)
 
         self._sync_tree_checkboxes_with_plan()
         self._refresh_plan_table()
@@ -314,6 +315,27 @@ class LaunchSettingsTab(QtWidgets.QWidget):
             self._selected_profile_id = item.data(PROFILE_ID_ROLE) if item else None
         self._update_config_panel()
 
+    def configure_icp_map(self, manifest: str, backend: str) -> None:
+        """完成地図を次回ICP起動へ渡す。起動中の構成・経路は変更しない。"""
+        from pathlib import Path
+        from geo_pose_converter.geo_core import load_projection_config_from_yaml
+        from icp_localization.registration import load_manifest
+        profile_id = 'icart_icp_route'
+        profile = self._profiles_by_id[profile_id]
+        state = self._states[profile_id]
+        values = resolve_effective_overrides(profile, state)
+        projection_file = Path(values['route_directory']).expanduser()/'projection.yaml'
+        projection = vars(load_projection_config_from_yaml(str(projection_file)))
+        load_manifest(manifest, projection)
+        for target in (profile_id, 'icart_real_survey'):
+            for key, value in [('icp_map_manifest', manifest), ('icp_backend_python_path', backend)]:
+                self._states[target].override_inputs[key] = value
+                self.argument_changed.emit(target, key, value)
+        self._selected_profile_id = profile_id
+        self._update_config_panel()
+        self._update_preview()
+        self._refresh_plan_table()
+
     def _select_plan_row_for(self, profile_id: str) -> None:
         for row in range(self._plan_table.rowCount()):
             item = self._plan_table.item(row, 0)
@@ -371,7 +393,7 @@ class LaunchSettingsTab(QtWidgets.QWidget):
             self._config_form.addRow('config:', param_edit)
         else:
             param_edit.deleteLater()
-        if profile_id == 'icart_recorded_route':
+        if profile_id in ('icart_recorded_route', 'icart_icp_route'):
             note = QtWidgets.QLabel('記録ルートを選択して一斉起動。\n起動後は始点と車体位置を確認し、\nダッシュボードの「自律走行開始」を押してください。\n切替前に手動採取の起動項目を停止してください。')
             note.setWordWrap(True)
             self._config_form.addRow(note)
@@ -401,7 +423,10 @@ class LaunchSettingsTab(QtWidgets.QWidget):
             self._argument_widgets[argument_name] = widget
             label = {'site': '場所', 'station': 'RTK補正局', 'ntrip_config': '独自局の設定ファイル', 'route_directory': '記録ルート', 'antenna_baseline_m': '現在のアンテナ間隔［m］',
                      'master_forward_m': '主アンテナ前後位置［m］（後方−）',
-                     'output_root': '走行設定の保存先' if profile_id == 'icart_recorded_route' else '軌跡の保存先'}.get(argument_name, argument_name)
+                     'icp_map_manifest': 'ICP地図manifest JSON',
+                     'localization_mode': '記録の自己位置（icp／gnss融合）',
+                     'icp_backend_python_path': 'small_gicpのPythonフォルダ（任意）',
+                     'output_root': '走行設定の保存先' if profile_id in ('icart_recorded_route', 'icart_icp_route') else '軌跡の保存先'}.get(argument_name, argument_name)
             self._config_form.addRow(f'{label}:', widget)
 
         self._update_preview()

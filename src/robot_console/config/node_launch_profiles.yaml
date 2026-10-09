@@ -67,23 +67,49 @@ profiles:
       master_forward_m: '-0.30'
       output_root: ~/route_runs
 
+  - profile_id: icart_icp_route
+    category: real_robot_base
+    display_name: 実機・ICP地図照合走行
+    package: icart_bringup
+    launch_file: icp_route.launch.py
+    param_argument: null
+    launch_order: 10
+    startup_group: real_robot_base
+    diagnostic_nodes: [icp_localization, rtk_gps_um982_node, route_manager, route_follower, drive_cmd_mux_node, obstacle_monitor, route_geo_projector]
+    health_topics:
+      - topic: /localization/icp_status
+        type: std_msgs/msg/String
+        rate_hz: 10.0
+      - topic: /scan
+        type: sensor_msgs/msg/LaserScan
+        rate_hz: 10.0
+      - topic: /route_state
+        type: tc_route_msgs/msg/RouteState
+        rate_hz: 1.0
+    user_arguments: [route_directory, icp_map_manifest, icp_backend_python_path, antenna_baseline_m, master_forward_m, output_root]
+    default_arguments:
+      localization_mode: icp
+      route_directory: /media/nkb/TEST/autonomous_route_20261005/route
+      icp_map_manifest: /media/nkb/TEST/icp_runtime_20261007/map_manifest.json
+      icp_backend_python_path: /home/nkb/colcon_ws_experiments/glim_runtime/python
+      antenna_baseline_m: '0'
+      master_forward_m: ''
+      output_root: /media/nkb/TEST/icp_route_runs
+
   - profile_id: icart_real_survey
     category: real_robot_base
-    display_name: 実機・手動走行／軌跡取得（センサ一式）
+    display_name: 実機・手動走行／ルート記録（既定ICP）
     package: icart_bringup
     launch_file: real_survey.launch.py
     param_argument: null
     launch_order: 10
     startup_group: real_robot_base
-    diagnostic_nodes: [gnss_lio_fusion, rtk_gps_um982_node, route_survey]
+    diagnostic_nodes: [rtk_gps_um982_node, route_survey]
     health_topics:
-      - topic: /fusion/status
-        type: tc_geo_msgs/msg/FusionState
-        rate_hz: 1.0
       - topic: /localization/pose_enu
         type: geometry_msgs/msg/PoseWithCovarianceStamped
         rate_hz: 10.0
-      - topic: /lio/odometry
+      - topic: /lio/odometry_raw
         type: nav_msgs/msg/Odometry
         rate_hz: 10.0
       - topic: /ypspur_ros/odom
@@ -92,11 +118,14 @@ profiles:
       - topic: /scan
         type: sensor_msgs/msg/LaserScan
         rate_hz: 10.0
-    user_arguments: [site, station, ntrip_config, output_root]
+    user_arguments: [site, station, ntrip_config, localization_mode, icp_map_manifest, icp_backend_python_path, output_root]
     default_arguments:
       site: 場所を選択
       station: 地域の既定局
-      output_root: ~/route_surveys
+      localization_mode: icp
+      icp_map_manifest: /media/nkb/TEST/icp_runtime_20261007/map_manifest.json
+      icp_backend_python_path: /home/nkb/colcon_ws_experiments/glim_runtime/python
+      output_root: /media/nkb/TEST/route_surveys
 
   - profile_id: icart_fused_stack
     category: route_stack

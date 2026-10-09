@@ -12,13 +12,27 @@ UIの保存先欄または「変更…」でも変更できる。記録中は保
 日時とランダムIDのフォルダを毎回作り、既存bagを上書きしない。
 
 `ros2 run robot_console record_bag_with_map` を起動する。内部のrosbagは
-`--all-topics --storage sqlite3 --max-bag-size 1073741824 --exclude-regex ^/Laser_map$`を使用する。
-通常トピックは開始後に出現するものも探索する。累積地図だけ元の`/Laser_map`を除外し、
-最新スナップショットを10秒ごとに`/Laser_map_record`へ配信して記録する。
-元地図の1秒ごとの表示更新や蓄積密度は変えず、時刻・frame_id・点群データも保持する。
-新しい地図が届かない周期は再配信しない。最初の記録用地図は開始約10秒後のため、
-10秒未満の記録には地図が含まれない場合がある。relayは記録開始時に起動し、停止時に終了する。
-再生側で元トピック名が必要なら`ros2 bag play <bag> --remap /Laser_map_record:=/Laser_map`を使用する。
+`--all-topics --storage sqlite3 --max-bag-size 1073741824`を使用し、
+除外正規表現`^/(Laser_map|sensor_viewer)$`で記録用relayに置き換える元トピックを除外する。
+通常トピックは開始後に出現するものも探索する。
+
+|元トピック|bagへ記録するトピック|記録周期|
+|---|---|---|
+|`/Laser_map`|`/Laser_map_record`|10秒|
+|`/sensor_viewer`|`/sensor_viewer_record`|1秒|
+
+各周期に受信済みの最新1件を記録し、元の時刻・frame_id・点群／画像データを保持する。
+Sensor Viewerは非圧縮画像のまま頻度だけを下げる。カメラ画像はこの間引きの対象外。
+GUIは元の`/sensor_viewer`を購読し、通常の配信頻度で表示する。
+地図の表示更新・蓄積密度、障害物判定と走行用ヒントも通常どおり動作する。
+新しい入力がない周期は古いデータを再配信しない。最初の記録用地図は開始約10秒後、
+記録用Sensor Viewerは約1秒後のため、それより短い記録には含まれない場合がある。
+relayは記録開始時に起動し、停止時に終了する。
+再生側で元トピック名が必要なら以下を使用する。
+
+```bash
+ros2 bag play <bag> --remap /Laser_map_record:=/Laser_map /sensor_viewer_record:=/sensor_viewer
+```
 隠しトピックとサービスは対象外。ROS_DOMAIN_ID等はUIの実行環境を引き継ぐ。
 センサ・点群・画像を含むため、実機で必要な受信レートと保存媒体の速度を確認すること。
 bagは約1 GiBごとのdb3ファイルとmetadata.yamlで構成される。親フォルダに同名.logも残す。
@@ -33,6 +47,8 @@ UIの通常終了・SIGINT/SIGTERM終了時にも停止処理を行う。
 ## 確認方法
 
 `tools/tests/` で二重開始、別UIとの競合、空き容量不足、起動失敗、停止・保存状態を確認する。
+ネットワークとデバイスを隔離したROS結合試験では、地図の10秒周期、Sensor Viewerの1秒周期、
+画像データと元時刻の保持、元画像の高頻度配信、入力停止後の重複抑止を確認する。
 記録後はmetadata.yamlと必要トピックのメッセージを確認する。
 実機センサ一式の帯域・保存媒体性能・長時間保存は実構成で検証する。
 実装はcore/bag_recorder.py、Qt表示はui_qt/widgets/bag_card.pyに配置する。

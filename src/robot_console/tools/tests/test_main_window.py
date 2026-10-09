@@ -29,16 +29,18 @@ def qt_app():
     yield app
 
 
-def test_main_window_has_five_tabs_in_expected_order(qt_app):
+def test_main_window_has_seven_tabs_in_expected_order(qt_app):
     window = MainWindow()
     tab_widget = window.tab_widget
 
-    assert tab_widget.count() == 6
+    assert tab_widget.count() == 7
     assert tab_widget.tabText(0) == TAB_TITLE_DASHBOARD
     assert tab_widget.tabText(1) == TAB_TITLE_LOCALIZATION_SENSOR
     assert tab_widget.tabText(2) == TAB_TITLE_LAUNCH_SETTINGS
     assert tab_widget.tabText(3) == TAB_TITLE_CONSOLE_LOG
     assert tab_widget.tabText(4) == 'GNSS・基地局'
+    assert tab_widget.tabText(5) == 'ルート記録'
+    assert tab_widget.tabText(6) == '地図作成'
     assert tab_widget.currentWidget() is window.dashboard_tab
 
 

@@ -28,6 +28,7 @@
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>visualization_msgs</exec_depend>
   <exec_depend>tc_route_msgs</exec_depend>
+  <exec_depend>icart_mapping</exec_depend>
   <exec_depend>tc_geo_msgs</exec_depend>
   <exec_depend>tc_perception_msgs</exec_depend>
   <exec_depend>rtk_gps_um982_msgs</exec_depend>

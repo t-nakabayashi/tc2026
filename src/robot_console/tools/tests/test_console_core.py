@@ -37,7 +37,7 @@ def test_build_snapshot_includes_health_for_all_profiles():
 
     profile_ids = {item.profile_id for item in snapshot.health}
     assert profile_ids == {profile.profile_id for profile in core._profiles}
-    assert len(snapshot.health) == 18
+    assert 'icart_icp_route' in profile_ids
     assert all(item.status == 'STOPPED' for item in snapshot.health)
 
 

@@ -35,7 +35,7 @@ def save(directory: Path, rows: list[dict], projection: ProjectionConfig,
     metadata = dict(version=2, traces=traces or {}, active=active, projection=vars(projection),
                     waypoints=[dict(a, observation=b.get('observation', {}),
                                     reason=b.get('reason', 'edited')) for a, b in zip(export, rows)],
-                    cloud_frame='map', cloud_source='FAST-LIO body scans + synchronized fused pose',
+                    cloud_frame='map', cloud_source='FAST-LIO body scans + synchronized localization pose',
                     cloud=np.asarray(cloud).tolist())
     tmp = directory/'survey.tmp'
     tmp.write_text(json.dumps(metadata, ensure_ascii=False), encoding='utf-8')

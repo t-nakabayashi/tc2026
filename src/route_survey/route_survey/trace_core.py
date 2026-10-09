@@ -1,4 +1,4 @@
-"""GNSSと融合軌跡を別々に保存し、同時刻の品質だけを関連付ける."""
+"""GNSSと自己位置推定の軌跡を別々に保存する。fusedキーは保存形式の互換名。"""
 from collections import deque
 import math
 

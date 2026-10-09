@@ -20,6 +20,7 @@ BOOL_ARGUMENTS = {
 }
 
 ENUM_ARGUMENTS: Dict[str, List[str]] = {
+    'localization_mode': ['icp', 'gnss'],
     'site': ['場所を選択', '稲城', 'つくば'],
     'station': ['地域の既定局', 'NTRIPなし'],
     'joy_input': ['joy_node', 'ps3_joy_sim'],

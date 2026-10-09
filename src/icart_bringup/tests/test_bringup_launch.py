@@ -92,6 +92,7 @@ def test_gui_survey_uses_selected_site_and_disables_duplicate_ui(monkeypatch, tm
     spec.loader.exec_module(module)
     calls = []
     monkeypatch.setattr(module, 'prepare_real', lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(module, 'write_yaml', lambda *_: None)
     monkeypatch.setattr(module, 'get_package_share_directory', lambda _: str(tmp_path))
     monkeypatch.setattr(module, 'read_yaml', lambda _: {
         'sites': {'inagi': {'default_station': 'none', 'stations': ['none']},
@@ -99,7 +100,8 @@ def test_gui_survey_uses_selected_site_and_disables_duplicate_ui(monkeypatch, tm
         'stations': {'none': {'label': 'NTRIPなし'}}})
     monkeypatch.setenv('ROS_DOMAIN_ID', '0')
     context = LaunchContext()
-    context.launch_configurations.update(site=site, station='NTRIPなし', output_root=str(tmp_path))
+    context.launch_configurations.update(site=site, station='NTRIPなし', output_root=str(tmp_path),
+                                         localization_mode='gnss')
     actions = module.setup(context)
     assert calls[0][0][5] == expected
     assert calls[0][1]['station'] == 'none'

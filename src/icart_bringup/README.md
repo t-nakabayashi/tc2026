@@ -47,8 +47,16 @@ Joy 0採取開始・1停止点・2信号停止点・3採取終了。実機はenv
 既にJoy配信中ならjoy_input:=externalとする。採取中に自律走行を開始しない。
 編集画面の生成・段差判定の制約はroute_survey/README.mdを参照する。
 
-手動経路採取もFAST-LIOとGNSSの融合位置を使用する。route_surveyの比較表示では、
-GNSS単独軌跡と融合軌跡を切替でき、受信状態を時刻ごとに確認できる。
+実機の `real_survey.launch.py` は `localization_mode=icp` が既定。
+FIX拘束付き地図 `/media/nkb/TEST/icp_runtime_20261007/map_manifest.json` を参照し、
+地図の投影原点を新しいsessionと採取ルートへ引き継ぐ。
+`icp_map_manifest` で別の地図を選択できる。地図欠損・ハッシュ不一致・場所との不整合は起動前に拒否する。
+保存先の既定は `/media/nkb/TEST/route_surveys`。GNSS融合は `localization_mode:=gnss` で選ぶ。
+既存sessionを渡す `survey.launch.py` はそのsessionの方式を使い、未指定はGNSS融合。
+route_surveyの比較表示では、GNSS単独軌跡と自己位置推定軌跡を切替できる。
+ICPは良好なFIX＋方位または手動初期位置で開始し、追跡中は地図照合とLIO予測を使う。
+初期化前は記録開始できない。照合不良中の予測点には要確認の品質を保存する。
+LIO途絶中は新規点を採取せず、終了・保存を受け付ける。復旧には手動初期位置または再起動が必要。
 GNSSの標準公開先は実機・模擬とも `/rtk_gps/{fix,heading,rtk_status,ntrip_status,time_sync}`。
 GUI・融合・座標変換・経路採取はこの公開名を使用する。
 
@@ -97,6 +105,16 @@ FIX条件にする。`session.yaml` の `gnss_start_fix_radius_m` で半径[m]�
 明示的な受信途絶の試験設定はFIX区域内でも有効。
 
 ## 実機の準備と保存経路の走行
+
+自己位置推定は共通launchの`localization_mode:=gnss|icp`で選択する。
+ICPでは固定地図にLIO点群を照合し、GNSS系と同じ`/localization/pose_enu`へ出力する。
+経路と走行制御は共通で、品質低下に連動する停止・FIX再初期化は行わない。
+GUIの「実機（ICP）／自律走行」は`icp_route.launch.py`を使う。
+同じ記録ルートに加えて`icp_map_manifest`を指定する。
+通常版のICPプリセットには、メディア内のつくば3,704点ルート・FIX拘束地図・既存の
+small_gicpライブラリを初期設定する。ICP本体・起動ファイル・GUIを通常の`install`へ
+ビルドして利用する。地図とログはメディア内に保持する。
+設定・初期位置・品質診断は[ICP自己位置推定](../icp_localization/README.md)を参照する。
 
 [実機ハードウェア統合](docs/実機ハードウェア統合.md)に接続・操作・設定生成をまとめる。
 `prepare_real_session --site inagi|tsukuba --station <局> --output <新規出力先>`で準備する。

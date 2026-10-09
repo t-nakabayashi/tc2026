@@ -65,7 +65,7 @@ class BagRecorder:
                                        output=str(output), free_bytes=free)
                 self._started = time.monotonic()
                 self._error = ''
-                # 累積地図は専用relayで10秒間隔。それ以外は全通常topic。
+                # 専用relayで累積地図は10秒、Sensor Viewerは1秒間隔にする。
                 log = (self.directory/(name+'.log')).open('w')
                 try:
                     self._process = subprocess.Popen([

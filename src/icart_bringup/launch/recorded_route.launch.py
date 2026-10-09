@@ -10,6 +10,7 @@ from launch.substitutions import LaunchConfiguration
 from icart_bringup.recorded_route import inspect_recorded_route
 from icart_bringup.hardware_core import prepare_real, read_yaml, write_yaml
 from icart_bringup.session_core import validate_domain
+from icart_bringup.localization_config import localization_settings
 
 
 def setup(context):
@@ -50,6 +51,18 @@ def setup(context):
         write_yaml(hardware_path, hardware)
     prepare_real(*shares, output, route['site'], hardware=hardware_path,
                  station=route['station'], custom=custom, route_directory=Path(route['directory']))
+    mode = context.launch_configurations.get('localization_mode', 'gnss')
+    manifest = context.launch_configurations.get('icp_map_manifest', '').strip()
+    backend = context.launch_configurations.get('icp_backend_python_path', '').strip()
+    from icart_bringup.session_core import load_session
+    localization_settings(load_session(output/'session.yaml', 'real'), mode, manifest, backend)
+    session = read_yaml(output/'session.yaml')
+    session['localization_mode'] = mode
+    if mode == 'icp':
+        session['icp_map_manifest'] = str(Path(manifest).expanduser().resolve())
+        if backend:
+            session['icp_backend_python_path'] = str(Path(backend).expanduser().resolve())
+    write_yaml(output/'session.yaml', session)
     return [IncludeLaunchDescription(
         PythonLaunchDescriptionSource(str(shares[0]/'launch/bringup.launch.py')),
         launch_arguments={'environment': 'real', 'session': str(output/'session.yaml'),
@@ -60,6 +73,9 @@ def setup(context):
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('route_directory', default_value=''),
+        DeclareLaunchArgument('localization_mode', default_value='gnss', choices=['gnss', 'icp']),
+        DeclareLaunchArgument('icp_map_manifest', default_value=''),
+        DeclareLaunchArgument('icp_backend_python_path', default_value=''),
         DeclareLaunchArgument('antenna_baseline_m', default_value='0', description='0は採取時の間隔を継承。変更時は実測mを指定'),
         DeclareLaunchArgument('master_forward_m', default_value='', description='車輪中心からの主アンテナ前後位置m。後方は負。空欄は採取時の位置を継承'),
         DeclareLaunchArgument('output_root', default_value='~/route_runs'),

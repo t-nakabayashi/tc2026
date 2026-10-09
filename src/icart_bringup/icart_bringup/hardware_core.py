@@ -85,7 +85,8 @@ def write_yaml(path: Path, value: dict, private: bool = False) -> None:
 def prepare_real(share: Path, planner_share: Path, fastlio_share: Path, livox_share: Path,
                  output: Path, site: str, hardware: Path | None = None,
                  station: str | None = None, custom: dict | None = None,
-                 route_directory: Path | None = None) -> None:
+                 route_directory: Path | None = None,
+                 survey_projection: ProjectionConfig | None = None) -> None:
     """再現可能な実機sessionを新規出力する。既存設定や採取原本は上書きしない。"""
     config = read_yaml(hardware or share/'params/hardware.yaml')
     geo = geometry(config)
@@ -108,7 +109,15 @@ def prepare_real(share: Path, planner_share: Path, fastlio_share: Path, livox_sh
         raise ValueError('実機初期経路はLLH正本が必要')
     # 採取経路では元の投影原点を必ず引き継ぐ。
     projection_file = route_dir/'projection.yaml'
-    if projection_file.exists():
+    if survey_projection is not None:
+        # 地図照合による採取は地図と同じ原点を正本にする。初期経路もLLHから再投影する。
+        from geo_pose_converter.geo_core import LlhPoint, llh_to_enu
+        projection = survey_projection
+        first_point = llh_to_enu(LlhPoint(float(first['latitude']), float(first['longitude']),
+                                        projection.origin_altitude), projection)
+        if math.hypot(first_point.x, first_point.y) > 10000.:
+            raise ValueError('選択した場所とICP地図が離れています。場所と地図を確認してください')
+    elif projection_file.exists():
         from geo_pose_converter.geo_core import load_projection_config_from_yaml
         projection = load_projection_config_from_yaml(str(projection_file))
     else:

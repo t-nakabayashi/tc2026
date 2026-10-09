@@ -14,6 +14,7 @@ from launch_ros.actions import Node
 
 from icart_bringup.session_core import load_session, validate_domain
 from icart_bringup.hardware_core import read_yaml, validate_runtime
+from icart_bringup.localization_config import localization_settings
 
 
 def setup(context) -> list:
@@ -25,6 +26,10 @@ def setup(context) -> list:
     share = Path(get_package_share_directory('obstacle_route_sim'))
     gps_base = '/rtk_gps' if simulation else data.get('gnss_namespace', '/rtk_gps')
     projection = data['projection_params']
+    localization_mode, icp_parameters = localization_settings(
+        data, context.launch_configurations.get('localization_mode', ''),
+        context.launch_configurations.get('icp_map_manifest', ''),
+        context.launch_configurations.get('icp_backend_python_path', ''))
     hardware = read_yaml(Path(data['hardware_config'])) if not simulation and data.get('hardware_config') else None
     if hardware:
         validate_runtime(hardware)
@@ -77,8 +82,15 @@ def setup(context) -> list:
         fastlio = data.get('fastlio_config') or str(
             Path(get_package_share_directory('fast_lio'))/'config/mid360.yaml')
     actions += [node('fast_lio', 'fastlio_mapping', [fastlio,
-                {'pcd_save.pcd_save_en': False}], [('/Odometry', '/lio/odometry_raw')]),
-                node('gnss_lio_fusion', 'gravity_alignment_node', remaps=[
+                {'pcd_save.pcd_save_en': False, 'publish.scan_publish_en': True,
+                 'publish.scan_bodyframe_pub_en': True}], [('/Odometry', '/lio/odometry_raw')])]
+    if localization_mode == 'icp':
+        actions += [node('icp_localization', 'localization_node', [
+                    *([data['icp_params']] if data.get('icp_params') else []),
+                    projection, icp_parameters], [('/rtk_gps/fix', gps_base+'/fix'),
+                        ('/rtk_gps/rtk_status', gps_base+'/rtk_status')])]
+    else:
+        actions += [node('gnss_lio_fusion', 'gravity_alignment_node', remaps=[
                     ('/mid360/livox/imu', '/sim/lio/imu')] if simulation else []),
                 node('gnss_lio_fusion', 'fusion_node', [
                     str(Path(get_package_share_directory('gnss_lio_fusion'))/'params/default.yaml'),
@@ -86,8 +98,8 @@ def setup(context) -> list:
                     *([data['fusion_params']] if data.get('fusion_params') else []),
                     {'output_log': LaunchConfiguration('fusion_log').perform(context), 'require_gravity_alignment': True}],
                      [('/rtk_gps/fix', gps_base+'/fix'),
-                                  ('/rtk_gps/rtk_status', gps_base+'/rtk_status')]),
-                node('geo_pose_converter', 'geo_pose_converter_node', [projection],
+                                  ('/rtk_gps/rtk_status', gps_base+'/rtk_status')])]
+    actions += [node('geo_pose_converter', 'geo_pose_converter_node', [projection],
                      [('gnss/pose_enu', '/gnss/pose_enu'),
                       ('rtk_gps/fix', gps_base+'/fix'), ('rtk_gps/heading', gps_base+'/heading'),
                       ('rtk_gps/rtk_status', gps_base+'/rtk_status')]),
@@ -109,7 +121,8 @@ def setup(context) -> list:
                     'allow_auto_resume': context.launch_configurations.get('allow_auto_resume', 'true') == 'true',
                     **({'l1_button_index': hardware['joy']['enable_button'],
                         'ps_button_index': hardware['joy']['ps_button']} if hardware else {})}],
-                     [('cmd_vel/autonomous', '/cmd_vel/fusion_limited')])]
+                     [('cmd_vel/autonomous', '/cmd_vel/autonomous'
+                       if localization_mode == 'icp' else '/cmd_vel/fusion_limited')])]
     if hardware or context.launch_configurations.get('start_teleop', 'false') == 'true':
         joy = hardware['joy'] if hardware else {}
         actions.append(node('drive_mode_manager', 'manual_teleop_node', [{
@@ -123,7 +136,8 @@ def setup(context) -> list:
         actions.append(Node(package='robot_console', executable='robot_console_qt',
                             output='screen', parameters=[{'use_sim_time': simulation}],
                             arguments=['--business-environment',
-                                       'デジタルツイン' if simulation else '実機（融合）'],
+                                       'デジタルツイン' if simulation else
+                                       ('実機（ICP）' if localization_mode == 'icp' else '実機（融合）')],
                             remappings=[('odom', '/ypspur_ros/odom'),
                                         ('rtk_gps/rtk_status', gps_base+'/rtk_status'),
                                         ('rtk_gps/ntrip_status', gps_base+'/ntrip_status')]))
@@ -158,6 +172,9 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument('environment', default_value='simulation', choices=['simulation', 'real']),
         DeclareLaunchArgument('session', description='prepare_sessionで生成したsession.yaml'),
         DeclareLaunchArgument('fusion_log', default_value='', description='任意の融合JSONL保存先'),
+        DeclareLaunchArgument('localization_mode', default_value='', description='空はsession設定、gnssまたはicp'),
+        DeclareLaunchArgument('icp_map_manifest', default_value='', description='ENU地図のmanifest JSON'),
+        DeclareLaunchArgument('icp_backend_python_path', default_value='', description='隔離small_gicpのPythonディレクトリ（任意）'),
         DeclareLaunchArgument('initial_drive_mode', default_value='autonomous',
                               choices=['autonomous', 'manual']),
         DeclareLaunchArgument('start_teleop', default_value='false', choices=['true', 'false']),

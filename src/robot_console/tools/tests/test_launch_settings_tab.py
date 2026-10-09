@@ -24,9 +24,9 @@ def _make_tab() -> LaunchSettingsTab:
 def test_tab_loads_all_profiles_grouped_by_category(qt_app):
     tab = _make_tab()
 
-    assert len(tab._profiles) == 18
+    assert 'icart_icp_route' in {p.profile_id for p in tab._profiles}
     assert 'icart_fused_stack' in {p.profile_id for p in tab._profiles}
-    assert tab._tree.topLevelItemCount() == 8  # profile.category の種類数
+    assert tab._tree.topLevelItemCount() == len({p.category for p in tab._profiles})
     assert set(tab._tree_items.keys()) == {p.profile_id for p in tab._profiles}
 
 
@@ -299,3 +299,16 @@ def test_real_manual_plan_has_site_and_output_controls(qt_app):
     assert received[-1] == ('icart_real_survey', 'site', 'つくば')
     assert tab._states['icart_real_survey'].override_inputs['site'] == 'つくば'
     assert 'output_root' in tab._argument_widgets
+
+
+def test_manual_localization_preset_changes_reach_launch_core(qt_app, monkeypatch):
+    from PyQt5 import QtWidgets
+    from robot_console.core.console_core import ConsoleCore
+    monkeypatch.setattr(QtWidgets.QMessageBox, 'question', lambda *a, **kw: QtWidgets.QMessageBox.Yes)
+    tab = LaunchSettingsTab()
+    core = ConsoleCore()
+    tab.argument_changed.connect(core.update_launch_override)
+    for environment, mode in [('実機（融合）', 'gnss'), ('実機', 'icp'), ('実機（ICP）', 'icp')]:
+        tab.apply_preset(environment, '手動走行')
+        assert tab.state_for('icart_real_survey').override_inputs['localization_mode'] == mode
+        assert core._launch_states['icart_real_survey'].override_inputs['localization_mode'] == mode
