@@ -146,7 +146,7 @@ ypspur-coordinator が起動していないか、別ユーザで起動してい�
 
 ## 設計
 
-詳細は [`docs/design.md`](docs/design.md) を参照。
+詳細は [`docs/ypspur_ros2_詳細設計書.md`](docs/ypspur_ros2_詳細設計書.md) を参照。
 
 ## ライセンス
 

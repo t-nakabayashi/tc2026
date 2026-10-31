@@ -77,11 +77,12 @@ ros2 run robot_navigator robot_navigator
 | `max_vel` | double | `1.0` | 線速度の上限 [m/s]。
 | `max_w` | double | `1.0` | 角速度の上限 [rad/s]。
 | `max_acc_v` | double | `0.7` | 線加速度上限 [m/s^2]。
-| `max_acc_w` | double | `0.6` | ドライバとの整合確認に使用する角加速度要求値 [rad/s^2]。PID出力自体の変化率制限ではない。
+| `max_acc_w` | double | `0.6` | ドライバとの整合確認に使用する角加速度要求値 [rad/s^2]。ドライバの能力がこれ以上であることを確認する。PID出力自体の変化率制限ではない。
 | `max_decel_v` | double | `1.5` | 制動距離の計算で想定する線減速度 [m/s^2]。
 | `braking_delay_sec` | double | `0.2` | 通信・driver遅延の設計予算 [s]。制御1周期を別途加算する。
 | `require_motion_limits` | bool | `true` | ドライバの実効制限の受信を必須にする。
-| `pos_tol` | double | `0.5` | 位置許容誤差 [m]。近接時に角度誤差処理へ切替。
+| `pos_tol` | double | `0.5` | 位置許容誤差 [m]。近接時に角度誤差処理へ切替。一度入ると新しい目標の受信まで解除しない。
+| `pos_tol_exit_margin` | double | `0.2` | 離脱判定の余裕として宣言するが、現在の制御では参照しない。
 | `ang_tol` | double | `0.25` | 角度許容誤差 [rad]。
 | `control_rate_hz` | double | `20.0` | 制御ループ周期 [Hz]。
 | `robot_width` | double | `0.6` | 障害物距離評価に用いるロボット幅 [m]。
@@ -91,18 +92,14 @@ ros2 run robot_navigator robot_navigator
 | `obstacle_distance_mode` | string | `"hint"` | `hint` または `scan`。距離取得ソースを切替。
 | `marker_frame` | string | `"map"` | Marker の出力フレーム。
 | `log_csv_path` | string | `/tmp/control_log.csv` | 同梱YAMLのCSVログ出力先。ノード直接起動時の既定は`~/control_log.csv`。
+| `pose_timeout_sec` | double | `1.0` | 自己位置の受信期限 [s]。
+| `odom_timeout_sec` | double | `1.0` | odom の受信期限 [s]。
+| `obstacle_timeout_sec` | double | `0.0` | 障害物距離の受信期限 [s]。0 で監視無効。
+| `road_block_hold_sec` | double | `5.0` | `/road_blocked` による停止の保持時間 [s]。
 
-## 状態管理・処理フロー
-1. odom・`/localization/pose_enu`・`/active_target` の受信状況を監視し、欠損時は `cmd_vel_topic` にゼロを出力して
-   WARN を 5 秒周期で報告する。
-2. 入力が揃うと `compute_time_optimal_cmd_vel()` を呼び出し、角度誤差の PID 制御で角速度を算出。
-3. 線速度は角度誤差および障害物距離に基づくスケールを適用し、`max_acc_v` に従って加速度を制限。
-4. 目標までの距離と、障害物距離から`min_obstacle_distance`を引いた距離について、
-   `v × 遅延 + v² / (2 × max_decel_v)`の制動距離で前進速度を制限する。
-   ここで`v`は実測速度と直前指令の絶対値の大きい方。停止が必要なら前進指令をゼロにする。
-   目標への角度誤差が許容値を超えている場合、角速度は残り得る。
-5. 指令を `cmd_vel_topic` に Publish し、`/direction_marker` で現在の進行方向を可視化する。
-6. CSV ログが有効な場合は制御ループの各種値（速度、誤差、障害物距離）を逐次書き出す。
+`max_vel`・`max_w`・`max_acc_v`・`max_acc_w`・`max_decel_v`・`braking_delay_sec`・
+`require_motion_limits` は読み取り専用として宣言し、起動後に変更できない。
+角速度 PID のゲインはパラメータを持たず、実装内の固定値である。
 
 ## 動作確認手順
 1. `robot_simulator`（当パッケージ内）を起動し、最終 `/cmd_vel` を受け取って `pose_topic`（既定 `/localization/pose_enu`）・`/ypspur_ros/odom` を配信させる。
@@ -150,20 +147,17 @@ ros2 run robot_navigator robot_navigator
 
 ## 入力途絶時の停止
 
-`pose_timeout_sec`、`odom_timeout_sec` はそれぞれ既定 1.0 秒である。
-`/localization/pose_enu` または odom が未受信、または受信間隔が閾値以上の場合、
-制御タイマーでゼロ速度を発行し、PID 積分・前回指令をクリアする。
-両入力の受信が復帰すると既存目標への追従を再開する。
-判定時刻は実機で `time.monotonic()`、`use_sim_time=true` ではROS時計とする。
-低速物理計算や一時停止のwall時間を模擬入力の欠測に数えない。
-ROSメッセージ自体のstampの鮮度はこの監視では検証しない。融合ノード側で別に監視する。
-古い内容の再配信、LiDAR の途絶、自己位置の品質低下、ノード自体の停止は別途対策が必要である。
-ROS非依存の `input_watchdog_core.py` が監視を担当し、testsで境界・復帰を確認する。
+`pose_timeout_sec`、`odom_timeout_sec` はそれぞれ既定 1.0 秒である。未受信または受信間隔が
+閾値以上の場合、制御タイマーでゼロ速度を発行する。両入力の受信が復帰すると追従を再開する。
 
 `obstacle_timeout_sec`（既定0:監視無効）を正の秒数にすると、
 選択したscan/hint入力の未受信・途絶時に速度をゼロにする。
 icart_bringupの共通実機profileは1秒を設定する。手動速度系には適用しない。
 
-同梱robot_simulatorの契約既定は最大線速度2.0 m/s・角速度3.0 rad/s、
-線加速度0.7 m/s²・線減速度1.5 m/s²・角加速度1.5 rad/s²である。
-加減速値は契約として配信される値であり、シミュレータの速度更新に物理的な加減速を再現するものではない。
+監視の判定時刻、stampの鮮度を検証しないこと、別途対策が必要な事象は
+[robot_navigator 詳細設計書](docs/robot_navigator_詳細設計書.md) 7.6 節を参照する。
+
+## 関連文書
+
+制御則、障害物距離入力の扱い、制約は
+[robot_navigator 詳細設計書](docs/robot_navigator_詳細設計書.md) を参照する。

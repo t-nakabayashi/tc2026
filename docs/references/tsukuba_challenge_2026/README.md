@@ -6,7 +6,7 @@
 
 - [閲覧用PDF](output/pdf/tc2026_reference.pdf) / [出典台帳](sources.json)
 - [このリポジトリでの確認事項](implementation_checklist.md)
-- [ソフトウェア評価・不足点（2026-09-22、HW対象外）](../../reviews/tc2026_software_20260922/README.md)
+- [走行システムの機能と制約](../../走行システムの機能と制約.md)
 - [公式トップ](https://tsukubachallenge.jp/2026/)
 
 ローカルのMarkdown/PDFはPC内の原本。iPhoneから直接参照できるのは公式HTTPSリンクで、ログイン不要で確認した。公式URLの公開期限は明示されていない。リポジトリ原本の外部公開・アップロードは行っていない。

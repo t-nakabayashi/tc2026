@@ -76,9 +76,87 @@ GO/STOP・封鎖の判定はカメラ画像の直下にチップで表示する�
 GNSS診断は実機・模擬とも `/rtk_gps/rtk_status` と `/rtk_gps/ntrip_status`。
 単独Qt起動・GUI一斉起動・共通起動は同じ公開名を使用する。
 別の配信元へ接続する場合は `rtk_status_topic` / `ntrip_status_topic` 引数で指定する。
-詳細は[基地局表示](docs/gnss_station_ui.md)を参照する。
-HTML版は読取専用で、認証機能を持たない。loopbackで待ち受け、別端末への公開は
-[HTML遠隔観測UIの公開範囲](docs/html_ui_access.md)の手順に従う。
+詳細は[基地局表示](docs/robot_console_gui_screen_function_design.md)を参照する。
+HTML版は読取専用で、認証機能を持たない。loopbackで待ち受ける。
+別端末への公開は下の「HTML遠隔観測UIの公開範囲」に従う。
+
+## HTML遠隔観測UIの公開範囲
+
+サーバはloopback（`127.0.0.1`）固定で待ち受ける。`--host` の既定値を変更せずに起動すれば、
+同じPC上からのみ閲覧できる。
+
+```bash
+ros2 run robot_console robot_console_web
+```
+
+上記は実機・シミュレーション共通のGNSSトピック `/rtk_gps/rtk_status` と
+`/rtk_gps/ntrip_status` を購読する。別の配信先を使う場合は `--ros-args -r` で
+両診断トピックを指定する。`--port` などのHTTPサーバ引数は `--ros-args` より前に指定できる。
+
+UIはGET専用で、手動介入・起動操作・パラメータ編集のAPIを持たない。一方で認証は無く、
+位置・経路・カメラ画像をそのまま配信する。**到達できる相手にはすべて見える**前提で
+公開範囲を決める。通信は平文HTTPであり、UI自体は経路の暗号化を行わない。
+
+### 別端末から閲覧する場合
+
+別端末から見るときも、サーバのbind先はloopbackのまま変えない。`--host 0.0.0.0` は
+有線・無線を含む全インタフェースへ開くことになるため使わない。
+
+閲覧端末とROS PCが同一のTailscale tailnetへ接続済みであることを前提に、Tailscale側の
+proxy機能でtailnet内へ限定公開する。ROS PC側で次を一度だけ実行する。
+
+```bash
+sudo tailscale serve --bg --https=443 8765
+```
+
+`8765` は `robot_console_web` の既定ポート。`--port` を変えた場合はその値を指定する。
+tailnet内の端末からは、そのPCのMagicDNS名へHTTPSでアクセスする。
+
+この構成では次の性質が得られる。
+
+- tailnet外からはTCP接続自体が成立しない（loopback以外で待ち受けていないため）
+- 接続元の判定は送信元IPではなく、Tailscaleの端末認証による
+- 経路はWireGuardで暗号化され、`--https` 指定時はTLSも終端される
+
+`--https` はtailnet側でMagicDNSとHTTPS証明書が有効である必要がある。無効の場合は
+`--http=<ポート>` でも公開範囲はtailnet内に限定されるが、TLS終端は行われない。
+
+状態の確認と撤去には次を使う。
+
+```bash
+tailscale serve status
+```
+
+```bash
+sudo tailscale serve reset
+```
+
+**この設定はtailscaledの状態として永続化され、PCやtailscaledを再起動しても残る。**
+公開をやめるときは明示的に `reset` する。撤去し忘れた場合、UIを停止している間は
+転送先が存在せず閲覧できないが、次にUIを起動した時点でtailnet内の端末から見える状態で
+立ち上がる。同じポートを別プロセスが使った場合も同様に露出するため、運用を終えたら
+状態を確認する。
+
+次の2つは行わない。
+
+- `tailscale funnel` は使わない。公開インターネットへ露出する機能であり、本UIの想定と
+  正反対である。
+- `--host 0.0.0.0` での起動はしない。
+
+既定ではtailnet内の全ノードが到達できる。特定の端末・ユーザだけに限定するときは、
+tailnet側のACLで当該ポートへのアクセスを許可するデバイスを絞る。ACLの設定値は
+Tailscale側の管理対象であり、本リポジトリでは管理しない。
+
+残るリスクは次のとおり。
+
+- 閲覧端末を紛失・乗っ取られた場合、その端末からは閲覧できる。対処はTailscale側の
+  デバイス管理（キー失効）で行う。
+- ROS PCにログインできる他のユーザ・プロセスはloopback経由で閲覧できる。これは公開範囲を
+  どう設定しても変わらない。
+- UI自体に認証を追加する場合は、別途リバースプロキシ等の導入が必要になる。
+
+本リポジトリにはポート番号と手順のみを記載し、IPアドレス、tailnet名、デバイス名、
+MagicDNS名は記載しない。これらは実行環境ごとに異なり、リポジトリ外で管理する。
 
 ## ログ・確認
 
@@ -88,6 +166,11 @@ NodeLaunchManagerがprofileごとのstdout/stderrを保存し、停止時はSIGI
 
 `tools/tests/` のpytestでCore・Snapshot・Qt表示・操作・HTTPを確認する。
 Qt WebEngineの試験にはpytest-forkedを使い、テスト間の状態を分離する。
+`QWebEngineView`を生成するテストは`tools/tests/isolated/`へ置く。同一インタプリタで
+複数の`QWebEngineView`を跨ぐとQtWebEngineの状態が汚染されセグメンテーションフォルトを
+起こすため、`test_isolated_suite.py`が`subprocess`で別インタプリタとして実行する。
+`tools/tests/`直下のテストはfork不要である。スレッドを残したまま`os.fork()`すると
+子プロセスがデッドロックするため、その規則はワークスペース直下のconftest.pyが検査する。
 模擬ROSと正式入口の接続確認は `tools/check_qt_entry.py` を使用する。
 簡易route stackの補助ツールと実機の走行・帯域・停止距離の確認は分けて扱う。
 
@@ -124,7 +207,8 @@ CLI同時起動時は`--business-environment`で初期環境を指定できる�
 Sensor Viewerは1秒ごとに`/sensor_viewer_record`へ記録する。GUIは元画像の通常配信を使い、
 カメラ画像を含むほかの通常トピックは全件記録する。
 元の`/Laser_map`と`/sensor_viewer`は記録対象から除外し、経過時間・容量・保存先を表示する。
-Web UIには追加していない。詳細は [ROSBAG保存](docs/rosbag_ui.md) を参照。
+Web UIには追加していない。詳細は
+[ROSBAG保存](docs/robot_console_gui_screen_function_design.md) を参照。
 
 ### R1によるGNSS途絶模擬
 

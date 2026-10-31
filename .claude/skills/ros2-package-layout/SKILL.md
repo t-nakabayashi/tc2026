@@ -59,7 +59,8 @@ src/<package_name>/
 - `params/` は ROS 2 パラメータ YAML を提供する場合に配置する。
 - `msg/` は独自メッセージを定義する場合に配置する。
 - `srv/` は独自サービスを定義する場合に配置する。
-- `docs/` はパッケージ固有の設計書、検討記録、仕様変更メモを置く場合に配置する。
+- `docs/` はパッケージ固有の詳細設計書を置く場合に配置する。文書の種別と章立ては
+  `documentation` スキルを参照する。
 - `tests/` は pytest ベースのテストを置く場合に配置する。
 - `tools/` は開発、検証、可視化、変換用の補助スクリプトを置く場合に配置する。
 - `routes/` は経路データを置く場合に配置する。
@@ -85,7 +86,7 @@ src/<package_name>/
 - `<node>_node.py` には、ROS 通信、パラメータ、QoS、ログ、タイマー、publisher/subscriber/service/action などを置く。
 - `src/` には C++ の実装ファイルを置く。
 - `msg/`, `srv/` には ROS interface 定義を置く。
-- `docs/` には設計書、検討記録、仕様変更メモを置く。
+- `docs/` には詳細設計書を置く。他の種別の文書はここに置かない。
 - `tests/` には pytest 互換のテストを置く。
 - `tools/` には開発・検証・可視化・変換用の補助スクリプトを置く。
 
@@ -103,8 +104,8 @@ src/<package_name>/
 ## Development Policy
 
 - パッケージ構成を不用意に崩さない。
-- コード変更と設計書・検討記録の整合を保つ。パッケージ詳細設計書のテンプレートは
-  `design-doc-template` スキルを参照する。
+- コード変更と詳細設計書・README の整合を保つ。文書の種別、章立ての雛形、命名規則は
+  `documentation` スキルを参照する。
 - 依存関係を追加する場合は、`package.xml`, `setup.py`, `CMakeLists.txt` の必要箇所を確認する。
 - pip install が必要な Python モジュールを追加する場合は、ワークスペース直下の `requirements.txt` にも記述する。
 - ROS 非依存で表現できるロジックは、ノード本体ではなく `*_core.py` などの独立したモジュールに寄せる。

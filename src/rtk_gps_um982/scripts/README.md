@@ -1,7 +1,7 @@
 # scripts/ — system時刻同期サンプル
 
 `chrony-gpsd.conf.sample`は手動設定例であり、colconによるシステムへの自動導入は行わない。
-全体構成は[同期提案](../../../docs/GNSS_FASTLIO時刻同期提案.md)を参照する。
+全体構成は[同期提案](../../../docs/時刻同期設計.md)を参照する。
 
 ## 入力の共有
 

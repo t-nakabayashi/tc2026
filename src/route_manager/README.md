@@ -59,28 +59,47 @@ ros2 launch route_manager route_manager.launch.py \
 | `goal_label` | string | `""` | 初期ルート要求時の終了ラベル。空文字で末尾まで。 |
 | `checkpoint_labels` | string[] | `[]` | 追加で通過させたいチェックポイント一覧。 |
 | `planner_timeout_sec` | double | `5.0` | `/update_route` 呼び出し時のサービス待機タイムアウト。 |
-| `planner_retry_count` | int | `2` | `/update_route` が失敗した場合の再試行回数。 |
+| `planner_retry_count` | int | `2` | 読み込むだけで、再試行処理を持たない。 |
 | `planner_connect_timeout_sec` | double | `10.0` | `/get_route` 接続待ちの打ち切り時間。 |
-| `state_publish_rate_hz` | double | `1.0` | `/route_state` 再送タイマーの周期。 |
-| `image_encoding_check` | bool | `false` | 予約パラメータ。現行処理には使わない。 |
-| `report_stuck_timeout_sec` | double | `5.0` | `/report_stuck` 処理の許容待ち時間（拡張用）。 |
+| `state_publish_rate_hz` | double | `1.0` | タイマー周期の計算に使うが、そのコールバックは何もしない。状態の再送は 1 Hz 固定。 |
+| `image_encoding_check` | bool | `false` | 読み込むだけで、画像の符号化を検査しない。 |
+| `report_stuck_timeout_sec` | double | `5.0` | 読み込むだけで、滞留報告の処理に時間制限を適用しない。 |
 | `offset_step_max_m` | double | `1.0` | Shift 回避で適用する横方向オフセットの上限値[m]。 |
+
+再計画の時間制限は状態機械側の 5.0 秒で固定されており、ROS パラメータを持たない。
 
 ## 状態管理・処理フロー
 ### FSM 状態遷移
-`manager_fsm.py` に実装された FSM は以下の状態遷移を持ちます。
+`manager_fsm.py` に実装された FSM は以下の状態を持ちます。FSM の状態名はログにのみ現れます。
 
-| FSM 状態 | 説明 | `/route_state.status` へのマッピング |
-|----------|------|---------------------------------------|
-| `IDLE` | 起動直後・ルート未取得 | `STATUS_IDLE` |
-| `REQUESTING` | `/get_route` 応答待ち | `STATUS_RUNNING` |
-| `ACTIVE` | ルート配信中 | `STATUS_RUNNING` |
-| `WAITING_REROUTE` | 滞留中で再計画待ち | `STATUS_HOLDING` |
-| `UPDATING` | `/update_route` 応答待ち | `STATUS_UPDATING_ROUTE` |
-| `COMPLETED` | ルート完走（follower から完了通報） | `STATUS_COMPLETED` |
-| `ERROR` | サービス失敗・例外 | `STATUS_ERROR` |
+| FSM 状態 | 説明 |
+|----------|------|
+| `IDLE` | 起動直後・ルート未取得 |
+| `REQUESTING` | `/get_route` 応答待ち |
+| `ACTIVE` | ルート配信中 |
+| `WAITING_REROUTE` | 滞留中で再計画実行中 |
+| `UPDATING` | 明示的な `/update_route` 応答待ち |
+| `COMPLETED` | ルート完走（follower から完了通報） |
+| `ERROR` | サービス失敗・タイムアウト・例外・再計画の全段階失敗 |
 
-`/manager_status` には `state`（上表）と `decision`（replan / shift / skip / failed）を出力します。
+### 配信する状態
+
+`/manager_status.state` と `/route_state.status` は FSM の状態名ではなく、Core が設定する
+公開状態文字列から作ります。実際に渡されるのは次の 4 種です。
+
+| 公開状態 | 設定する契機 | `/route_state.status` |
+|----------|--------------|------------------------|
+| `idle` | 初期値 | `STATUS_IDLE` |
+| `running` | 経路の受理、shift / skip / 再配信の成立 | `STATUS_RUNNING` |
+| `holding` | 再計画の全段階が失敗 | `STATUS_HOLDING` |
+| `completed` | follower の完了通知 | `STATUS_COMPLETED` |
+
+`/manager_status` には上表の `state` と `decision`（none / replan_first / update / shift /
+skip / road_blocked_fixed / failed）を出力します。
+
+再計画が全段階失敗した場合、公開状態は `holding` になる一方で FSM は `ERROR` へ遷移し、
+以降の `/report_stuck` を受け付けません。詳細は
+[詳細設計](docs/route_manager_詳細設計書.md)の 6.4 節を参照してください。
 
 > 走行開始タイミングの制御を `route_follower` の `start_immediately` パラメータに統一し、
 > `route_manager` は起動直後に必ず初期ルートを要求します。`start_immediately=false` の場合は
@@ -89,13 +108,13 @@ ros2 launch route_manager route_manager.launch.py \
 ### `/report_stuck` に対する再計画フロー
 1. Core が滞留報告を受理し、ルートバージョン・現在 index・滞留理由を検証する。
 2. 通常の可変区間では `/update_route` を試す。固定区間ではplanner更新を省略する。
-3. `/update_route` が失敗した場合は `offset_step_max_m` を上限とした左右オフセット提示（shift）を試みる。
-4. それでも走行不能な場合は次ウェイポイントのスキップ（skip）を試行し、部分ルートを再配信する。
+3. `/update_route` が失敗した場合は、現在 waypoint 自体を `offset_step_max_m` を上限として横へずらした経路を生成する（shift）。滞留理由が `front_blocked`・`avoidance_failed`・列挙外の場合のみ試す。
+4. それでも走行不能な場合は現在 index を次へ進めた経路を再配信する（skip）。waypoint の配列は変えず、1 つの経路につき 1 回まで、`not_skip` の点では行わない。
 5. すべて失敗した場合は `decision_code=FAILED` とし、`note` に原因を格納する。
-6. `offset_hint` には follower が採用すべき横方向オフセット量（m）を設定する。
+6. `offset_hint` には shift の横ずれ量（m、左は負）を設定する。follower はこの値を記録するだけで、追従判断には使わない。
 
 `ROAD_BLOCKED` は別分岐で、固定区間は現行経路を再配信し、可変区間はplanner再計画だけを試します。
-この場合はshift／skipを行いません。[詳細設計](docs/route_manager_詳細設計書_phase3.md)を参照してください。
+この場合はshift／skipを行いません。[詳細設計](docs/route_manager_詳細設計書.md)を参照してください。
 
 ## 動作確認手順
 1. `route_planner` を起動し、`/get_route` `/update_route` サービスが利用可能であることを確認する。
@@ -112,6 +131,7 @@ ros2 launch route_manager route_manager.launch.py \
 4. `/route_state` や `/manager_status` を `ros2 topic echo` で監視し、FSM 状態遷移が意図どおりであることを確認する。
 
 ## デバッグのヒント
-- `/manager_status` の `decision` が `skip` の場合、Core がローカルに経路をスライスして再配信している。
-- `/update_route` が連続で失敗する場合は、`route_planner` 側の閉塞ノード指定や YAML 設定を確認する。
-- `planner_connect_timeout_sec` を短く設定すると、`/get_route` サービスが未起動のまま一定時間経過した場合に `ERROR` へ遷移する。
+- `/manager_status` の `decision` が `skip` の場合、Core が現在 index を次へ進めた経路を `minor` 版を上げて再配信している。waypoint は削除されない。
+- `/update_route` が連続で失敗する場合は、`route_planner` 側の閉塞ノード指定や YAML 設定を確認する。現在 index が 0 のときは前の点が無いため要求自体を出さない。
+- `/get_route` が未起動のまま `planner_connect_timeout_sec` を超えると、error ログを出して初期要求を行わない。FSM は `IDLE` のままで `ERROR` にはならない。
+- 本ノードは `MultiThreadedExecutor` を前提とする。単一スレッドで動かすと滞留報告の処理中にプランナ応答を受け取れずデッドロックする。

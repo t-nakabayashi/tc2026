@@ -85,8 +85,10 @@ ros2 launch drive_mode_manager drive_mode_manager.launch.py
 
 起動直後の既定モードは `autonomous` です。手動走行へ切り替えるには、Joy 入力で L1 と PS button
 を `manual_transition_hold_s` 秒以上同時押しします。手動走行中は L1 を押している間だけ
-`/cmd_vel/manual` が有効になります。自律走行へ戻す場合は L1 を離し、
-`manual_to_auto_l1_released_s` 経過後に `/cmd_vel/autonomous` が有効なら復帰待ち状態へ移ります。
+最終 `/cmd_vel` に手動指令が出ます（`/cmd_vel/manual` 自体は常に publish され、mux が
+L1 で選択します）。自律走行へ戻す場合は L1 を離し、`manual_to_auto_l1_released_s` 経過後に
+`/cmd_vel/autonomous` が有効なら復帰待ち状態へ移り、`auto_resume_delay_s` の間はゼロを
+出力してから自律指令を通します。
 
 ### 開発用 Joy simulator を起動
 
@@ -145,12 +147,15 @@ ros2 launch drive_mode_manager ps3_joy_sim.launch.py
 ## パラメータ
 
 既定値は [`params/default.yaml`](params/default.yaml) で管理します。
+`manual_transition_trigger` は `l1_ps_button_hold` のみ実装しています。
+`turn_preview_seconds`、`max_autonomous_resume_linear_x`、`max_autonomous_resume_angular_z`
+は YAML にありますが、現行の表示処理では使いません。
 
 | ノード | 主なパラメータ |
 | --- | --- |
 | `manual_teleop_node` | `linear_axis`, `angular_axis`, `linear_scale`, `angular_scale`, `enable_button`, `joy_timeout_s`, `publish_rate_hz` |
-| `drive_cmd_mux_node` | `initial_mode`, `manual_transition_trigger`, `manual_transition_hold_s`, `manual_to_auto_l1_released_s`, `auto_resume_delay_s`, `autonomous_cmd_timeout_s`, `manual_cmd_timeout_s`, `l1_button_index`, `ps_button_index` |
-| `drive_status_gui_node` | `main_display_ratio`, `direction_linear_scale`, `direction_angular_scale`, `direction_deadzone`, `direction_linear_axis_invert`, `direction_angular_axis_invert`, `turn_preview_seconds` |
+| `drive_cmd_mux_node` | `initial_mode`, `allow_auto_resume`, `manual_transition_trigger`, `manual_transition_hold_s`, `manual_to_auto_l1_released_s`, `auto_resume_delay_s`, `autonomous_cmd_timeout_s`, `manual_cmd_timeout_s`, `joy_timeout_s`, `l1_button_index`, `ps_button_index` |
+| `drive_status_gui_node` | `main_display_ratio`, `direction_linear_scale`, `direction_angular_scale`, `direction_deadzone`, `direction_linear_axis_invert`, `direction_angular_axis_invert` |
 | `ps3_joy_sim_node` | `joy_topic`, `publish_rate_hz`, `num_axes`, `num_buttons`, `invert_left_stick_x`, key bind 関連パラメータ |
 
 ## 依存関係

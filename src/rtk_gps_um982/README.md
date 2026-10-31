@@ -142,7 +142,7 @@ colcon test-result --verbose
 
 ## 設計
 
-詳細は [`docs/design.md`](docs/design.md) を参照。
+詳細は [`docs/rtk_gps_um982_詳細設計書.md`](docs/rtk_gps_um982_詳細設計書.md) を参照。
 
 ## ライセンス
 
@@ -162,4 +162,4 @@ TLS・HTTP chunked必須のサービスは非対応。実機FIXは別途確認�
 NTRIP接続状態、CRC確認済みRTCM量・速度・最終受信経過、再接続回数、通信エラー種別を
 位置コールバックとは独立して送る。認証情報は含めない。
 `ntrip.station_id`, `ntrip.station_label`, `ntrip.site` はUI向けの表示名（任意）。
-UI詳細は [基地局表示](../robot_console/docs/gnss_station_ui.md)を参照。
+UI詳細は [基地局表示](../robot_console/docs/robot_console_gui_screen_function_design.md)を参照。

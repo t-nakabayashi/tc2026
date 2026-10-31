@@ -1,4 +1,4 @@
-"""PyQt5側の地図表示Widget（`robot_console_ui_renewal_input.md` 8.4節 候補A）。
+"""PyQt5側の地図表示Widget（`robot_console_gui_screen_function_design.md` 地図とセンサ）。
 
 `QWebEngineView` にLeaflet + OpenStreetMapタイルの地図HTMLを埋め込み、現在位置・
 目標waypoint・route waypoint列を表示する。HTML遠隔観測UI（`web/static/app.js`）と

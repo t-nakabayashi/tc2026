@@ -1,0 +1,48 @@
+# tools/check_docs.py の検査から除外する対象と、その理由。
+#
+# 無条件の無視は作らない。すべての項目に理由を書き、理由が失効したら項目を消す。
+
+# 文書に現れるが、このリポジトリのコードには現れないトピック名。
+topics:
+  # submodule 側で定義・配信するトピック。走査対象外のコードに実体がある。
+  - name: /cloud_registered
+    reason: FAST_LIO (submodule) が配信する登録済み点群
+  - name: /cloud_registered_body
+    reason: FAST_LIO (submodule) が配信する車体座標の点群
+  - name: /livox/lidar
+    reason: livox_ros_driver2 (submodule) が配信する点群
+  - name: /livox/imu
+    reason: livox_ros_driver2 (submodule) が配信する IMU
+
+  # ROS 2 本体または標準ノードが扱うトピック。
+  - name: /tf
+    reason: tf2 の標準トピック
+  - name: /tf_static
+    reason: tf2 の標準トピック
+  - name: /joy
+    reason: joy_node (標準パッケージ) が配信する
+
+# トピック名の書式に見えるが、実体はファイルシステムのパスであるもの。
+filesystem_paths:
+  - name: /var/crash
+    reason: ROS ディストリの crash report 出力先
+  - name: /tmp/obstacle_route_sim/routes
+    reason: 生成 route の一時出力先
+  - name: /run/icart-clock
+    reason: 時刻同期ゲートが状態を置く実行時ディレクトリ
+
+# 名前空間を含む形で文書に書かれ、コード上は相対名で宣言されるトピックは、
+# check_docs.py が末尾から部分名を照合するため除外の必要がない。
+remapped_topics: []
+
+# 文書で言及するが declare_parameter を持たないパラメータ名。
+parameters: []
+
+# 詳細設計書が未整備のパッケージ。README が設計内容を含むため当面は README を正とする。
+# 設計書を起こした時点でこの項目を消す。放置の言い訳にしないため理由と状況を書く。
+pending_design_docs:
+  - name: icp_localization
+    reason: |
+      上流が追加した固定地図ICP自己位置推定。README に構成・初期化条件・計測値・
+      未検証範囲を記載済み。設計判断の正は実装者にあり、本リポジトリの文書整備側で
+      推測して書き起こさない。実機走行が未検証の段階であり、確定した設計を記述できない。

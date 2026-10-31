@@ -8,9 +8,9 @@ function_design.md 7章）。走行中の通常監視はダッシュボード、
 詳細数値カード（ダッシュボードのGPS/Poseカードと重複する内容）は置かず、
 空いた領域を地図表示の拡大に充てる。
 
-地図表示は `robot_console_ui_renewal_input.md` 8.4節の候補A（QWebEngineViewで
-地図HTMLを埋め込み、Leaflet+OSMタイルで自己位置・目標waypoint・route waypoint列を
-重畳表示する）を採用する。
+地図表示は `robot_console_gui_screen_function_design.md` の「地図とセンサ」に従い、
+QWebEngineViewで地図HTMLを埋め込み、Leaflet+OSMタイルで自己位置・目標waypoint・
+route waypoint列を重畳表示する。
 """
 
 from __future__ import annotations

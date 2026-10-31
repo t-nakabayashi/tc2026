@@ -8,7 +8,7 @@
 
 ## 主な機能
 - `/scan` の ±90° 以内の点群からロボット幅帯を抽出し、左右の回避オフセットを算出。
-- `front_cone_half_deg`・`stop_dist_m` を用いた前方くさび判定で閉塞状況を検知。
+- ロボット幅帯内の距離分位点と `stop_dist_m` の比較で閉塞状況を検知（角度くさびではない）。
 - `/obstacle_avoidance_hint` に front_blocked・front_clearance_m・左右オフセットを配信。
 - `/sensor_viewer` に LaserScanViewer 互換の bgr8 画像を配信し、
   `/localization/pose_enu`・`/active_target` を重畳して目標方向を可視化。
@@ -42,34 +42,29 @@ ros2 run obstacle_monitor obstacle_monitor
 | 名称 | 型 | 説明 | QoS |
 |------|----|------|-----|
 | `/obstacle_avoidance_hint` | `tc_route_msgs/ObstacleAvoidanceHint` | front_blocked・front_clearance_m・左右オフセット[m] を配信。 | BEST_EFFORT / VOLATILE / depth=1 |
-| `/sensor_viewer` | `sensor_msgs/Image` | LaserScanViewer 相当のデバッグ画像（bgr8）。 | BEST_EFFORT / VOLATILE / depth=1 |
+| `/sensor_viewer` | `sensor_msgs/Image` | LaserScanViewer 相当のデバッグ画像（bgr8）。 | RELIABLE / VOLATILE / depth=1 |
 
 > サービス・アクションは提供しません。
 
 ## パラメータ
-| 名称 | 型 | 既定値 | 概要 |
-|------|----|--------|------|
-| `front_cone_half_deg` | double | `10.0` | 前方閉塞判定の半角 [deg]。
-| `stop_dist_m` | double | `1.0` | くさび内で停止を指示する距離 [m]。
-| `front_clearance_percentile` | double | `5.0` | 前方閉塞判定で使用する距離分位点[%]。
-| `front_clearance_min_points` | int | `5` | 前方閉塞判定を行うために必要な最小点数。
-| `max_obstacle_distance_m` | double | `1.5` | 避障対象とする最大距離 [m]。
-| `hint_range_m` | double | `5.0` | front_clearance を通知する最大距離 [m]。
-| `robot_width_m` | double | `0.8` | ロボットの全幅 [m]。
-| `avoid_offset_min_m` | double | `0.75` | 左右オフセットの下限値 [m]。
-| `viewer_map_range_m` | double | `8.0` | viewer の描画範囲（x:0..8, y:-4..4）。
-| `viewer_pixel_pitch` | int | `100` | viewer のピクセル密度 [pix/m]。
-| `viewer_window` | string | `"laserscan"` | OpenCV 表示ウィンドウ名（debug 用）。
-| `viewer_resize_px` | int | `500` | 配信画像のリサイズサイズ [px]。
+既定値は、ノードの宣言と `params/default.yaml` で 3 件が異なる。launch は既定で YAML を
+読み込むため、`ros2 launch` では YAML 側が有効になる。
 
-## 状態管理・処理フロー
-1. `/scan` を受信すると NaN/Inf・後方データを除外し、前方 ±90° の点群へ変換する。
-2. `max_obstacle_distance_m` 以下の点を左右に分割し、|y| 昇順で並べ替える。
-3. `calcAvoidanceOffset` でギャップ検出・外縁推定で左右オフセットを算出し、
-   `avoid_offset_min_m` の下限を適用する。
-4. `front_cone_half_deg` 内での距離分位点を計算し、`stop_dist_m` 以下で閉塞と判定する。
-5. 算出結果を `ObstacleAvoidanceHint` に格納し、`/sensor_viewer` へ可視化画像を出力する。
-6. `/localization/pose_enu`・`/active_target` を利用して viewer 上に目標矢印を描画し、状況把握を補助する。
+| 名称 | 型 | 宣言 | YAML | 概要 |
+|------|----|------|------|------|
+| `front_cone_half_deg` | double | `10.0` | `10.0` | **読み込まれていない。** 判定は車幅帯で行うため、変えても効かない。
+| `stop_dist_m` | double | `1.0` | `0.75` | 車幅帯内の距離分位点がこの値以下で閉塞と判定する [m]。
+| `front_clearance_percentile` | double | `5.0` | `5.0` | 前方閉塞判定で使用する距離分位点[%]。
+| `front_clearance_min_points` | int | `5` | `5` | 前方閉塞判定を行うために必要な最小点数。
+| `max_obstacle_distance_m` | double | `1.5` | `1.5` | 点群の抽出上限 [m]。検知範囲はこの値で決まる。
+| `front_block_ignore_dist_m` | double | `0.15` | `0.15` | 点群の抽出下限（前方距離）[m]。
+| `hint_range_m` | double | `max_obstacle_distance_m` | `5.0` | front_clearance を通知する最大距離 [m]。抽出上限より小さいと警告して補正する。
+| `robot_width_m` | double | `0.8` | `0.6` | ロボットの全幅 [m]。回避オフセットの閾値と閉塞判定の帯幅に使う。
+| `avoid_offset_min_m` | double | `0.75` | `0.75` | 左右オフセットの下限値 [m]。
+| `viewer_map_range_m` | double | `8.0` | `8.0` | viewer の描画範囲（x:0..範囲, y:±範囲/2）。
+| `viewer_pixel_pitch` | int | `100` | `100` | viewer のピクセル密度 [pix/m]。
+| `viewer_window` | string | `"laserscan"` | `"laserscan"` | ウィンドウ名として読み込むが、OpenCV の表示は無効化してある。画像は topic のみ。
+| `viewer_resize_px` | int | `500` | `500` | 配信画像のリサイズサイズ [px]。
 
 ## 動作確認手順
 1. `robot_simulator` などから `/localization/pose_enu`・`/active_target` を配信する。
@@ -81,10 +76,18 @@ ros2 run obstacle_monitor obstacle_monitor
 ## デバッグのヒント
 - `hint_range_m` < `max_obstacle_distance_m` の場合は WARN が出力され、内部で自動補正されます。
 - viewer 画像が真っ白な場合は `/scan` の距離が範囲外になっていないか確認してください。
-- `front_blocked` が常に `False` の場合は `front_cone_half_deg` と `stop_dist_m` の組み合わせを見直します。
+- `front_blocked` が常に `False` の場合は `robot_width_m`（判定に使う帯幅）と `stop_dist_m`、
+  `front_clearance_min_points` の組み合わせを見直します。`front_cone_half_deg` は効きません。
 
 ## 制約
 
 点数不足では非閉塞・距離infを返すため、欠測と空き空間を区別できない。
 前方点の抽出上限は `max_obstacle_distance_m` であり、`hint_range_m` だけを増やしても
-遠方の検知範囲は広がらない。[判定と制約](docs/追加実装検討報告書.md)を参照する。
+遠方の検知範囲は広がらない。
+2D スキャンの前方±90°のみを使い、TF 変換を行わない。低い段差、旋回中の車体外周、
+後方の障害物は検知しない。
+
+## 関連文書
+
+判定ロジックと制約の詳細は
+[obstacle_monitor 詳細設計書](docs/obstacle_monitor_詳細設計書.md) を参照する。

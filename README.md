@@ -1,10 +1,10 @@
 # tc2026
 
-ROS 2 Jazzy ワークスペース。初めて読む場合は[システム構成](docs/次期システム_アーキテクチャ検討レポート.md)から参照する。
+ROS 2 Jazzy ワークスペース。初めて読む場合は[システム構成](docs/システム構成.md)から参照する。
 
 ## つくばチャレンジ2026の公式情報
 
-[走行システムの機能と制約](docs/reviews/tc2026_software_20260922/README.md)
+[走行システムの機能と制約](docs/走行システムの機能と制約.md)
 
 [公式ルール・参加条件・日程の参照ガイド](docs/references/tsukuba_challenge_2026/README.md)
 に、出典URL、未公表事項、公式ページ間の記載差、実装確認事項をまとめています。
@@ -16,7 +16,7 @@ ROS 2 Jazzy ワークスペース。初めて読む場合は[システム構成]
 | パッケージ                                                  | 役割                                                                 |
 | ----------------------------------------------------------- | -------------------------------------------------------------------- |
 | [`src/rtk_gps_um982`](src/rtk_gps_um982/README.md)          | Unicore UM982 RTK GNSS ドライバ。NavSatFix / Imu / RtkStatus を配信  |
-| [`src/rtk_gps_um982_msgs`](src/rtk_gps_um982_msgs/)         | 上記用カスタム msg (`RtkStatus`)                                     |
+| [`src/rtk_gps_um982_msgs`](src/rtk_gps_um982_msgs/README.md) | 上記用カスタム msg (`RtkStatus`)                                     |
 | [`src/ypspur_ros2`](src/ypspur_ros2/README.md)              | yp-spur ベースの差動駆動ロボット制御。`/cmd_vel` で動かす            |
 
 ### 経路計画・追従
@@ -30,7 +30,7 @@ ROS 2 Jazzy ワークスペース。初めて読む場合は[システム構成]
 ### 座標変換・地理情報
 | パッケージ                                                  | 役割                                                                 |
 | ----------------------------------------------------------- | -------------------------------------------------------------------- |
-| [`src/tc_geo_msgs`](src/tc_geo_msgs/)                       | LLH位置、品質、地図投影条件を共有する msg 定義                       |
+| [`src/tc_geo_msgs`](src/tc_geo_msgs/README.md)              | LLH位置、品質、地図投影条件を共有する msg 定義                       |
 | [`src/geo_pose_converter`](src/geo_pose_converter/README.md) | LLH/ENU相互変換、経路の地理座標投影、OSM経路表示を提供               |
 | [`src/icp_localization`](src/icp_localization/README.md) | FIX拘束済み地図とFAST-LIO点群で車体位置を推定。GNSS系と共通の経路・位置出力を使用 |
 | [`src/icart_mapping`](src/icart_mapping/README.md) | GUIからbagのICP閉合・FIX拘束付き地図を隔離生成 |
@@ -58,6 +58,7 @@ ROS 2 Jazzy ワークスペース。初めて読む場合は[システム構成]
 | [`src/traffic_signal_recognizer`](src/traffic_signal_recognizer/README.md) | YOLO検出結果から信号のGO/STOPを判定し、検出矩形と判定データを配信 |
 | [`src/road_blockage_detector`](src/road_blockage_detector/README.md) | YOLO検出結果と自己位置から道路封鎖を判定し、検出矩形と判定データを配信 |
 | [`src/robot_console`](src/robot_console/README.md)          | 走行状態・障害物回避・経路進捗・ノード起動を一画面で監視する PyQt5 GUI ダッシュボードとHTML遠隔観測UI |
+| [`src/tc_diagnostics`](src/tc_diagnostics/README.md)        | 各ノードが `/diagnostics` へ自己申告診断を配信するための共通ヘルパ |
 
 ワークスペース横断の仕様書は [`docs/`](docs/)、パッケージ固有の設計書は各パッケージ
 配下の `docs/` を参照。
@@ -280,6 +281,11 @@ fork による停止を避ける。各グループが600秒を超えた場合は
 単一パッケージは `python3 -m pytest src/<package>/tests`（robot_console は
 `src/robot_console/tools/tests`）で実行できる。
 GUI テストには Qt WebEngine と pytest-forked、地形生成には Node.js が必要。
+ROS を実際に起動するテストは、pytest の親プロセスではなく `pytest.mark.forked` か
+`subprocess` で別プロセスへ隔離する。ROS context の初期化で生じる DDS スレッドは
+`rclpy.shutdown()` 後も残留し、親プロセスに残ると `pytest-forked` が `os.fork()` した
+子プロセスをデッドロックさせる。この規則はワークスペース直下の
+[`conftest.py`](conftest.py) が検査し、違反したテストは停止せず失敗する。
 地理地形の生成には `src/obstacle_route_sim/tools/terrain3d` で `npm ci` も実行する。
 通常 install のツールを使う場合は、
 `npm ci --prefix "$(ros2 pkg prefix obstacle_route_sim)/lib/obstacle_route_sim/terrain3d"`

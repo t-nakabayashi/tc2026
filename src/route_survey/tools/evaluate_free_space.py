@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read-only ROS bag replay and synthetic closed-loop local-space experiment.
 
-No ROS node is created and no velocity is published. See docs/free_space_sample.md.
+No ROS node is created and no velocity is published. See docs/空き空間参照サンプル.md.
 """
 import argparse
 from collections import deque

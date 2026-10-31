@@ -1,3 +1,6 @@
+import os
+import subprocess
+import sys
 from types import SimpleNamespace
 from gnss_lio_fusion.gnss_dropout import GnssDropoutHold
 
@@ -39,35 +42,48 @@ def test_fusion_drops_pending_and_live_gnss_then_accepts_fresh(monkeypatch):
 
 
 def test_joy_ros_transport_releases_even_with_paused_sim_clock():
-    import time
-    import rclpy
-    from rclpy.executors import SingleThreadedExecutor
-    from sensor_msgs.msg import Joy
-    from std_msgs.msg import Bool
-    from gnss_lio_fusion.fusion_node import FusionNode
-    rclpy.init(args=['--ros-args', '-p', 'use_sim_time:=true'], domain_id=196)
-    fusion = FusionNode()
-    source = rclpy.create_node('dropout_test_source')
-    publisher = source.create_publisher(Joy, '/joy', 10)
-    states = []
-    source.create_subscription(Bool, '/fusion/gnss_dropout_active', lambda m: states.append(m.data), 10)
-    executor = SingleThreadedExecutor()
-    executor.add_node(fusion); executor.add_node(source)
-    def spin_for(duration, buttons=None):
-        end = time.monotonic()+duration
-        while time.monotonic() < end:
-            if buttons is not None: publisher.publish(Joy(buttons=buttons))
-            executor.spin_once(timeout_sec=.01)
-    try:
-        spin_for(.8, [0]*6)
-        spin_for(.3, [0]*5+[1])
-        assert fusion.gnss_dropout_active and states[-1]
-        spin_for(.2, [0]*6)
-        assert not fusion.gnss_dropout_active and not states[-1]
-        spin_for(.3, [0]*5+[1])
-        assert fusion.gnss_dropout_active
-        spin_for(.8)
-        assert not fusion.gnss_dropout_active and not states[-1]
-        assert fusion.get_clock().now().nanoseconds == 0
-    finally:
-        executor.shutdown(); source.destroy_node(); fusion.destroy_node(); rclpy.shutdown()
+    """隔離ROS domainで、実際のJoy配送経路と停止時計での解除を検証する。
+
+    ROS contextの初期化はDDSの内部スレッドを生成し、`rclpy.shutdown()` 後も
+    それらは残留する。pytestの親プロセスでDDSを初期化すると、以降に
+    `pytest-forked` が `os.fork()` する子プロセスがDDSの内部ロックを保持した
+    まま複製され、子側の `rclpy.init()` がデッドロックする。そのため本テストは
+    親プロセスではなく別プロセスでROSを起動する（`conftest.py` の
+    `pytest_runtest_setup()` がこの規則を検査する）。
+    """
+    script = r'''
+import time
+import rclpy
+from rclpy.executors import SingleThreadedExecutor
+from sensor_msgs.msg import Joy
+from std_msgs.msg import Bool
+from gnss_lio_fusion.fusion_node import FusionNode
+rclpy.init(args=['--ros-args', '-p', 'use_sim_time:=true'], domain_id=196)
+fusion = FusionNode()
+source = rclpy.create_node('dropout_test_source')
+publisher = source.create_publisher(Joy, '/joy', 10)
+states = []
+source.create_subscription(Bool, '/fusion/gnss_dropout_active', lambda m: states.append(m.data), 10)
+executor = SingleThreadedExecutor()
+executor.add_node(fusion); executor.add_node(source)
+def spin_for(duration, buttons=None):
+    end = time.monotonic()+duration
+    while time.monotonic() < end:
+        if buttons is not None: publisher.publish(Joy(buttons=buttons))
+        executor.spin_once(timeout_sec=.01)
+try:
+    spin_for(.8, [0]*6)
+    spin_for(.3, [0]*5+[1])
+    assert fusion.gnss_dropout_active and states[-1]
+    spin_for(.2, [0]*6)
+    assert not fusion.gnss_dropout_active and not states[-1]
+    spin_for(.3, [0]*5+[1])
+    assert fusion.gnss_dropout_active
+    spin_for(.8)
+    assert not fusion.gnss_dropout_active and not states[-1]
+    assert fusion.get_clock().now().nanoseconds == 0
+finally:
+    executor.shutdown(); source.destroy_node(); fusion.destroy_node(); rclpy.shutdown()
+'''
+    env = dict(os.environ, ROS_DOMAIN_ID='196', ROS_AUTOMATIC_DISCOVERY_RANGE='LOCALHOST')
+    subprocess.run([sys.executable, '-c', script], env=env, check=True, timeout=30)

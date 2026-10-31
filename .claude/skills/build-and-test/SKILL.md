@@ -81,4 +81,36 @@ pytest src/<package_name>/tests
 
 - ワークスペース直下の `pytest.ini` が `testpaths` を管理しているため、新規パッケージに
   テストを追加した場合は `testpaths` への追記が必要かどうかを確認する。
+
+## ROS を実際に起動するテスト
+
+`rclpy.init()` / `rclpy.context.Context.init()` は DDS の内部スレッドを生成し、
+それらは `rclpy.shutdown()` 後も残留する。`pytest-forked` は `os.fork()` で子プロセスを
+作るが、`fork()` は呼び出しスレッドだけを複製するため、親プロセスが DDS スレッドを
+抱えた状態で fork すると、子プロセスは解放されないロックを引き継ぎ、`rclpy.init()` で
+デッドロックする。テストは失敗せず停止し続け、CI はタイムアウトで打ち切られる。
+
+- ROS context を初期化するテストは、pytest の親プロセスで実行しない。次のいずれかで
+  別プロセスへ隔離する。
+  - `pytest.mark.forked` を付ける（`src/robot_console/tools/tests/isolated/` 配下は
+    conftest.py が付与するため、個別の指定は不要）。
+  - `subprocess.run([sys.executable, '-c', script], env=..., timeout=...)` で起動する
+    （`src/gnss_lio_fusion/tests/test_gravity_transport.py`、`test_gnss_dropout.py` が例）。
+- どちらの場合も `ROS_DOMAIN_ID` と `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` で
+  他の実行から隔離し、`timeout` を付けて回収する。
+- この規則はワークスペース直下の `conftest.py` が検査する。検査は 2 つある。
+  - fork 直前の親プロセスのネイティブスレッド数が pytest 起動時より増えていれば失敗させる。
+    ROS に限らず HTTP サーバ・Qt・背景スレッドの残留も捕まえる。
+  - 親プロセスで ROS context が初期化済みなら、原因を名指しして失敗させる。
+- どちらの失敗が出た場合も、直前に実行されたテストのうちスレッドを残すものを探して
+  別プロセスへ隔離する。デッドロックせずに失敗するため、停止を待つ必要はない。
+- fork する対象は最小限にする。`QWebEngineView` を生成するテストは
+  `src/robot_console/tools/tests/isolated/` へ置き、`test_isolated_suite.py` が
+  `subprocess` で別インタプリタとして実行する。fork 元となるその子プロセスは
+  `isolated/` しか収集しないため、他のテストのスレッドを持ち込まない。
+- CI は念のため 2 段に分けて実行する。将来 `tools/tests` 直下へ forked テストが
+  追加された場合に、影響を 1 段目へ波及させないためである。手元で分けて実行する場合は
+  `pytest -q --ignore-glob="*robot_console/tools/tests*"` と
+  `pytest -q src/robot_console/tools/tests` を使う。`--ignore` は `testpaths` に
+  明示されたディレクトリには効かないため `--ignore-glob` を使う。
 - テスト結果を報告する場合は、実行コマンド、成功/失敗、失敗時の原因、未確認範囲を明記する。

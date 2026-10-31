@@ -54,9 +54,15 @@ ros2 launch route_follower route_follower.launch.py \
 |------|----|--------|------|
 | `arrival_threshold` | double | `0.6` | Waypoint 到達判定距離[m]。 |
 | `control_rate_hz` | double | `20.0` | `FollowerCore.tick()` を呼ぶ周期[Hz]。0 以下の場合は 20Hz に補正。 |
-| `resend_interval_sec` | double | `1.0` | `/active_target` 再送周期[s]。内部で `republish_target_hz = 1.0 / resend_interval_sec` を設定。 |
-| `start_immediately` | bool | `false` | ルート受信直後に自動で RUNNING へ遷移するか。 |
+| `resend_interval_sec` | double | `1.0` | `/active_target` 再送周期[s]。0 以下の場合は 1.0 秒に補正。 |
+| `start_immediately` | bool | `true`（YAML は `false`） | ルート受信直後に自動で RUNNING へ遷移するか。 |
 | `target_frame` | string | `"map"` | Publish する Pose の frame_id。 |
+| `avoid_back_offset_m` | double | `0.5`（YAML は `0.75`） | 回避起点を進行方向後方へ下げる距離[m]。負の場合は 0.0 に補正。 |
+| `road_blocked_confirmation_sec` | double | `5.0` | `/road_blocked` の封鎖継続を確認する時間[s]。負の場合は 0.0 に補正。 |
+
+既定値のうち `start_immediately` と `avoid_back_offset_m` は、ノードが宣言する値と
+`params/default.yaml` の値が異なる。launch は既定で YAML を読み込むため `ros2 launch`
+では YAML の値が有効になり、パラメータを与えない `ros2 run` では宣言側の値が有効になる。
 
 ## 状態管理・処理フロー
 ### Follower 状態遷移
@@ -67,17 +73,17 @@ ros2 launch route_follower route_follower.launch.py \
 | `IDLE` | ルート未適用。`start_immediately=false` で manual_start 待ち。 |
 | `RUNNING` | 通常追従中。 |
 | `WAITING_STOP` | 停止属性のある点に到達して待機。manual_startで再開し、信号停止はsig_recog=1でも再開。 |
-| `STAGNATION_DETECTED` | 滞留を検知し、局所回避や待機準備を実施。 |
+| `STAGNATION_DETECTED` | 滞留検知直後の経過状態。同一周期内で必ず他の状態へ移るため `/follower_state` には現れない。 |
 | `AVOIDING` | 回避サブゴール（横オフセットなど）を実行中。 |
-| `WAITING_REROUTE` | `/report_stuck` 応答待ち。サービス結果に応じて再開または失敗判定。 |
+| `WAITING_REROUTE` | 再計画待ち。新しい `/active_route` の適用で再開する。 |
 | `FINISHED` | 最終 Waypoint へ到達。 |
-| `ERROR` | frame_id 不一致など致命的エラー。 |
+| `ERROR` | 経路未適用、再計画待ちの期限超過、再計画失敗の通知。自己復帰しない。 |
 
 ### `/report_stuck` 呼び出しフロー
-1. `FollowerCore` が滞留を検知すると `WAITING_REROUTE` に遷移し、ノード側で `/report_stuck` を非同期呼び出しする。
-2. リクエストには `route_version`・`current_index`・`current_wp_label`・現在 Pose・ヒント統計などを含める。
-3. 応答が `DECISION_REPLAN` や `DECISION_SKIP` の場合は `offset_hint` や skip 指示を `FollowerCore` に反映する。
-4. `DECISION_FAILED` の場合は `notify_reroute_failed()` を呼び出し `ERROR` へ遷移してオペレータ介入を要求する。
+1. `FollowerCore` が滞留を検知すると `WAITING_REROUTE` に遷移し、ノード側で `/report_stuck` を非同期呼び出しする。応答待ちの重複呼び出しは 1 件に抑える。
+2. リクエストには `route_version`・`current_index`・`current_wp_label`・現在 Pose・滞留理由・ヒント統計を含める。
+3. 応答のうち挙動へ反映するのは `DECISION_FAILED` のみで、`notify_reroute_failed()` を呼び出し `ERROR` へ遷移してオペレータ介入を要求する。
+4. それ以外の `decision_code` と `offset_hint` はログに出すだけで追従判断に使わない。再開は `route_manager` が新しい `/active_route` を配信することで成立する。
 
 ## 動作確認手順
 1. `route_manager` を起動し、`/active_route` と `/report_stuck` が利用可能な状態にする。
@@ -86,9 +92,10 @@ ros2 launch route_follower route_follower.launch.py \
 4. `/report_stuck` を `ros2 service call` 等で模擬し、`decision_code` に応じたログと状態変化を確認する。
 
 ## デバッグのヒント
-- `/active_route` の `header.frame_id` が `target_frame` と異なる場合は `ERROR` へ遷移する。空文字は自動補完される。
-- `/obstacle_avoidance_hint` が届かない場合は滞留判定統計が十分に貯まらず、`front_blocked_majority` が False のままになる。
-- `/report_stuck` が利用できない状態で滞留するとリトライ待ちとなり、ログに "not ready" が出力される。サービス起動順を確認する。
+- `/active_route` の `header.frame_id` は検査しない。`/active_target` の `frame_id` は購読内容に依らず `target_frame` で配信する。
+- `/obstacle_avoidance_hint` が 5 秒窓で 5 サンプル未満の場合は統計が成立せず、`front_blocked` は False のままになる。滞留時は理由 `no_hint` で再計画要求となる。
+- `/report_stuck` が利用できない状態で滞留するとリトライ待ちとなり、ログに "not ready" が出力される。サービス起動順を確認する。30 秒で `ERROR` へ移る。
+- 同じ目標の周期再送では `header.stamp` を据え置く。新しい指示との区別に使える。
 
 
 ## 停止・回避の制約

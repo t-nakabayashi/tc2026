@@ -38,7 +38,7 @@ YAML 設定、CSV キャッシュ、グラフ探索を組み合わせて再計�
 | `map_image_path` | string | `""` | 可変ブロック描画用の地図画像パス。パッケージルートからの相対パスを指定可能。 |
 | `map_worldfile_path` | string | `""` | 地図画像に対応するワールドファイルのパス。パッケージルートからの相対パスを指定可能。 |
 | `route_id` | string | `default_route` | `Route.route_id` に設定するルート識別子。 |
-| `projection_config_path` | string | `params/default.yaml` | `geo_pose_converter` の parameter YAML。`Route.projection` と LLH/ENU 変換に使う投影条件を読み込む。 |
+| `projection_config_path` | string | `params/default.yaml` | `geo_pose_converter` の parameter YAML。`Route.projection` と LLH/ENU 変換に使う投影条件を読み込む。読み込みに失敗した場合は東京駅原点の固定値へ落ちて起動を続けるため、起動ログの投影原点を確認する。 |
 
 ## 状態管理・処理フロー
 ### YAML `blocks` の構成
@@ -77,9 +77,11 @@ blocks:
 | `edges_file` | str | エッジ定義 CSV。 |
 | `start` | str | 可変区間の開始ノード ID。 |
 | `goal` | str | 可変区間の終了ノード ID。 |
-| `checkpoints` | list[str] | 必須経由ノード ID のリスト（任意）。 |
+| `checkpoints` | list[str] | 必須経由ノード ID のリスト。YAML と要求の `checkpoint_labels` を統合した集合が空だと探索は失敗するため、可変ブロックは 1 つ以上必要。 |
 
-可変ブロックは `solve_variable_route()` で最短経路を算出し、`edge_sequence` に列挙されたセグメントを連結します。
+可変ブロックは `solve_variable_route()` で、開始ノードから通過点をすべて 1 回ずつ通って
+終了ノードへ至る最小コストの順序を求め、`edge_sequence` に列挙されたセグメントを連結します。
+通過点は「通ってもよい点」ではなく「必ず通る点」です。
 CSV の Waypoint は `segment_id` 単位でキャッシュされ、進行方向に応じて反転されます。
 
 ### CSV 仕様
@@ -125,5 +127,5 @@ LLH/ENU 変換式、heading/yaw 変換、投影原点は `geo_pose_converter` �
 
 ## デバッグのヒント
 - エラー発生時はスタックトレースを出力するため、`GetRoute` / `UpdateRoute` 失敗時は YAML や CSV の記述ミスを確認する。
-- 再探索で閉塞が多発する場合は `GetRoute` を再呼び出しし、`closed_edges` をリセットして最新ルートを取得する。
+- 封鎖として除去したエッジはグラフから消えたまま残る。`GetRoute` を呼び直してもグラフは復元されない（通過点の訪問履歴だけがリセットされる）。閉塞を戻すにはノードを再起動する。
 - 出力される PNG パスは `solve_variable_route` の戻り値 `route_image_path` に含まれる。ファイルが無い場合はダミー画像が生成される。

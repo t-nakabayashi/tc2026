@@ -313,6 +313,22 @@ pgrep -af "gz sim|ros_gz|run_session|gnss_lio_fusion|route_manager|route_followe
   区別がつかない。`ros2 node list` が空のときは最初にこれを疑う。
 - 並行して別の試験を行う場合は `run_digital_twin --domain-id 87` のように分ける。
 
+### 確認済み結果
+
+つくばチャレンジ 2026 デジタルツインでは、2026-09-23 時点で以下を確認済みである。
+
+| 項目 | 結果 |
+| --- | --- |
+| 地図展開（SHA-256 照合） | 成功 |
+| 対象ノード起動 | 15 ノードが `ros2 node list` に出現 |
+| `/route_state` | `total=1142`、`status=running`、`label='0'` |
+| `/fusion/status` | `mode=GPS_LIO`、`has_estimate=true`、`baseline_ready=true` |
+| `/diagnostics` | 4 ノードから `<ノード名>/<観点>` 形式で受信 |
+| Node Health | `run_session` 起動分を `GUI外で起動` の `RUNNING` として検出 |
+| 停止処理 | プロセスグループ `SIGINT` で残存なし |
+
+全区間の走行完走は未確認である。
+
 ## 地形・センサ・融合の確認
 
 同梱のつくば地図で操作UIを使う場合は[icart_bringup](../icart_bringup/README.md)から起動する。
@@ -320,13 +336,13 @@ pgrep -af "gz sim|ros_gz|run_session|gnss_lio_fusion|route_manager|route_followe
 
 | 対象 | 説明 |
 | --- | --- |
-| [terrain3d / i-Cart mini](docs/terrain3d_icart_mini検証.md) | 地形生成・模擬車体・期限付き試験・真値軌跡 |
-| [地理地図・GNSS](docs/地理地図_GNSSシミュレーション検証.md) | LLH、品質、欠測の入力 |
-| [つくば全域モデル](docs/つくば2026全域デジタルツイン.md) | 入力データ・精度・人為的な通路確保 |
-| [地理経路とFLOAT](docs/地理ウェイポイント_FLOAT_FASTLIO評価.md) | 経路・建物近傍誤差の比較 |
-| [FAST-LIO接続](docs/FASTLIOシミュレータ接続検証.md) | IMU・点群adapter、比較と融合走行の選択 |
-| [点群地図](docs/全域FASTLIO点群地図評価.md) | 分割保存、PCD、SDF表面との比較 |
-| [センサ誤差モデル](docs/FASTLIOセンサ誤差モデル評価.md) | reference／field_assumed／conservativeの仮定 |
+| [terrain3d / i-Cart mini](docs/terrain3dとi-Cart miniの試験環境.md) | 地形生成・模擬車体・期限付き試験・真値軌跡 |
+| [地理地図・GNSS](docs/地理地図と模擬GNSS.md) | LLH、品質、欠測の入力 |
+| [つくば全域モデル](docs/つくば2026の地理モデル.md) | 入力データ・精度・人為的な通路確保 |
+| [地理経路とFLOAT](docs/地理ウェイポイント・FLOAT・FAST-LIOの比較方法.md) | 経路・建物近傍誤差の比較 |
+| [FAST-LIO接続](docs/FAST-LIOの模擬入力と確認方法.md) | IMU・点群adapter、比較と融合走行の選択 |
+| [点群地図](docs/FAST-LIO点群地図の保存と評価.md) | 分割保存、PCD、SDF表面との比較 |
+| [センサ誤差モデル](docs/FAST-LIOのセンサ誤差モデル.md) | reference／field_assumed／conservativeの仮定 |
 | [融合](../gnss_lio_fusion/docs/実装評価.md) | 品質・方位・車輪退避・閉ループ確認 |
 
 `evaluate_terrain_trial.py --gnss --fusion --fastlio <実行ファイル>`で融合位置による走行を選ぶ。
