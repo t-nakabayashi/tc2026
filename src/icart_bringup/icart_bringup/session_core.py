@@ -129,12 +129,36 @@ def run_main() -> None:
     parser.add_argument('--session', type=Path, required=True)
     parser.add_argument('--environment', choices=['real', 'simulation'], required=True)
     parser.add_argument('--start-ui', action='store_true')
+    parser.add_argument('launch_arguments', nargs='*', metavar='key:=value',
+                        help='共通launchへそのまま渡す引数（record_bag、bag_directory等）')
     args = parser.parse_args()
-    launch_session(args.session, args.environment, start_ui=args.start_ui)
+    launch_session(args.session, args.environment, start_ui=args.start_ui,
+                   launch_arguments=args.launch_arguments)
 
 
-def launch_session(session: Path, environment: str, *, start_ui: bool = False) -> None:
+def validate_launch_arguments(arguments: list) -> list:
+    """`key:=value` 形式だけを通す。
+
+    DDS domainとsessionはここで決めるため、同じ引数の二重指定を拒否する。
+    形式の検査をしないと、綴り誤りがlaunch側で無視され、指定したつもりの設定で
+    走ってしまう。
+    """
+    reserved = {'session', 'environment', 'start_ui'}
+    checked = []
+    for argument in arguments or []:
+        if ':=' not in argument:
+            raise ValueError(f'launch引数は key:=value で指定する: {argument}')
+        key = argument.split(':=', 1)[0]
+        if key in reserved:
+            raise ValueError(f'{key} は run_session が決めるため指定できない')
+        checked.append(argument)
+    return checked
+
+
+def launch_session(session: Path, environment: str, *, start_ui: bool = False,
+                   launch_arguments: list = None) -> None:
     """DDS設定を検査し、余分なros2 runプロセスを挟まずlaunchへ引き渡す."""
+    extra = validate_launch_arguments(launch_arguments)
     data = load_session(session, environment)
     domain = int(data.get('simulation_domain_id', 86) if environment == 'simulation'
                  else data.get('real_domain_id', 0))
@@ -145,4 +169,4 @@ def launch_session(session: Path, environment: str, *, start_ui: bool = False) -
     os.execvp('ros2', ['ros2', 'launch', 'icart_bringup', 'bringup.launch.py',
                        'session:='+str(session.resolve()),
                        'environment:='+environment,
-                       'start_ui:='+str(start_ui).lower()])
+                       'start_ui:='+str(start_ui).lower(), *extra])

@@ -1,0 +1,28 @@
+# 層の高さは床面基準である。topURG は床上 0.25 m の単一平面、点群層は MID-360 の
+# 前下がり 26.9° 取付で近傍から観測できる 0.35 m と 0.50 m を既定とする。
+lidar_layer_slicer:
+  ros__parameters:
+    publish_rate_hz: 10.0
+    base_frame: "base_link"
+    floor_to_base_link_m: 0.148248
+
+    scan_layer_name: "urg"
+    scan_layer_height_m: 0.25
+    scan_half_fov_deg: 90.0
+
+    cloud_layer_names: ["low", "mid"]
+    cloud_layer_heights_m: [0.35, 0.50]
+    cloud_layer_thickness_m: [0.10, 0.10]
+    cloud_message_type: "custom"
+    accumulate_frames: 3
+    accumulate_window_sec: 1.0
+
+    forward_range_m: 2.0
+    robot_width_m: 0.6
+    side_margin_m: 0.1
+    max_offset_m: 3.0
+    near_x_m: 0.15
+
+    view_range_x_m: 4.0
+    view_range_y_m: 2.0
+    view_pixel_pitch: 120

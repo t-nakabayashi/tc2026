@@ -210,6 +210,12 @@ Sensor Viewerは1秒ごとに`/sensor_viewer_record`へ記録する。GUIは元�
 Web UIには追加していない。詳細は
 [ROSBAG保存](docs/robot_console_gui_screen_function_design.md) を参照。
 
+実機の共通起動は走行開始時に同じ保存先へ自動記録する。保存先のロックを起動側が
+先に確保するため、**GUIからの記録開始は「同じ保存先で別のUIが記録中です」として
+断られる**。これは同じtopicを2本の記録プロセスが書く二重記録を防ぐ挙動であり、
+走行中は起動側の記録がそのまま続く。記録せずに走る場合は共通起動へ
+`record_bag:=false` を渡す（[共通起動](../icart_bringup/README.md)を参照）。
+
 ### R1によるGNSS途絶模擬
 
 R1（SDLボタン5）を押している間だけ、融合ノードへのGNSS位置・品質内の方位入力を破棄する。

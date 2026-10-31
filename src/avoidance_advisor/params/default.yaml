@@ -1,0 +1,15 @@
+# CLI の実行は機上 PC で行う。コマンド列の `{prompt}` が要求文へ置換される。
+# 作業ディレクトリはリポジトリ外に作る。リポジトリ内で起動すると、リポジトリの設定や
+# 指示をエージェントが読み込み、助言と無関係な指示が混入するためである。
+avoidance_advisor:
+  ros__parameters:
+    enabled: true
+    cli_command: ["claude", "-p", "--output-format", "text", "--allowedTools", "Read", "{prompt}"]
+    cli_timeout_sec: 20.0
+    workspace_root: ""
+    keep_workspace: true
+
+    min_confidence: 0.5
+    default_wait_sec: 10.0
+    max_wait_sec: 30.0
+    image_max_age_sec: 5.0

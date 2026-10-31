@@ -67,6 +67,7 @@ _FOLLOWER_PAUSE_REASONS = {
     'WAITING_STOP': '停止waypointで待機中（信号/停止線）',
     'WAITING_REROUTE': '再経路待ち（route_managerの応答待ち）',
     'STAGNATION_DETECTED': '滞留検知（回避判断中）',
+    'WAITING_OBSTACLE': '移動障害の通過待ち（人・ロボット）',
 }
 
 

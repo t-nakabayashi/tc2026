@@ -27,8 +27,17 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPo
 from builtin_interfaces.msg import Time
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, Pose, Quaternion
 from std_msgs.msg import Header, Bool, Int32
-from tc_route_msgs.msg import Route, Waypoint, FollowerState, ObstacleAvoidanceHint  # type: ignore
+from tc_route_msgs.msg import (  # type: ignore
+    AvoidanceAdvice,
+    FollowerState,
+    ObstacleAvoidanceHint,
+    Route,
+    Waypoint,
+)
+from tc_route_msgs.action import RequestAvoidanceAdvice  # type: ignore
 from tc_route_msgs.srv import ReportStuck  # type: ignore
+from tc_perception_msgs.msg import ObstacleLayers  # type: ignore
+from rclpy.action import ActionClient
 
 # 可変ルート探索（外部モジュール）
 _THIS_DIR = Path(__file__).resolve().parent
@@ -36,6 +45,7 @@ if str(_THIS_DIR) not in sys.path:
     sys.path.append(str(_THIS_DIR))
 
 from follower_core import (
+    AdviceDecision,
     FollowerCore,
     Pose as CorePose,
     Waypoint as CoreWaypoint,
@@ -95,6 +105,17 @@ class RouteFollowerNode(Node):
         self.declare_parameter("avoid_back_offset_m", 0.5)
         self.declare_parameter("road_blocked_confirmation_sec", 5.0)
 
+        # AI 助言。既定は無効で、有効化しない限り従来どおりの回避だけで走る。
+        self.declare_parameter("use_ai_advice", False)
+        self.declare_parameter("advice_trigger_hold_sec", 3.0)
+        self.declare_parameter("advice_wait_limit_sec", 3.0)
+        self.declare_parameter("advice_cooldown_sec", 20.0)
+        self.declare_parameter("advice_cooldown_m", 3.0)
+        self.declare_parameter("advice_budget_per_min", 4)
+        self.declare_parameter("advice_budget_total", 30)
+        self.declare_parameter("max_obstacle_wait_sec", 30.0)
+        self.declare_parameter("layer_clearance_timeout_sec", 2.0)
+
         arrival_threshold = float(self.get_parameter("arrival_threshold").value)
         control_rate = float(self.get_parameter("control_rate_hz").value)
         if control_rate <= 0.0:
@@ -126,6 +147,22 @@ class RouteFollowerNode(Node):
         self.core.start_immediately = self.start_immediately
         self.core.avoid_back_offset_m = avoid_back_offset
         self.core.road_blocked_confirmation_sec = road_blocked_confirmation
+        self.core.use_ai_advice = bool(self.get_parameter("use_ai_advice").value)
+        self.core.advice_trigger_hold_sec = float(
+            self.get_parameter("advice_trigger_hold_sec").value)
+        self.core.advice_wait_limit_sec = float(
+            self.get_parameter("advice_wait_limit_sec").value)
+        self.core.advice_cooldown_sec = float(
+            self.get_parameter("advice_cooldown_sec").value)
+        self.core.advice_cooldown_m = float(self.get_parameter("advice_cooldown_m").value)
+        self.core.advice_budget_per_min = int(
+            self.get_parameter("advice_budget_per_min").value)
+        self.core.advice_budget_total = int(
+            self.get_parameter("advice_budget_total").value)
+        self.core.max_obstacle_wait_sec = float(
+            self.get_parameter("max_obstacle_wait_sec").value)
+        self.core.layer_clearance_timeout_sec = float(
+            self.get_parameter("layer_clearance_timeout_sec").value)
         # 自己申告診断。生存はreporterのタイマーが回ることで表される。
         self._diagnostics = DiagnosticReporter(self)
         report_alive(self._diagnostics)
@@ -147,6 +184,8 @@ class RouteFollowerNode(Node):
         active_target_topic = 'active_target'
         follower_state_topic = 'follower_state'
         report_stuck_service = 'report_stuck'
+        obstacle_layers_topic = 'obstacle/layers'
+        advice_action_name = 'request_avoidance_advice'
 
         self.sub_route = self.create_subscription(Route, active_route_topic, self._on_route, self.qos_tl)
         self.sub_pose = self.create_subscription(
@@ -165,12 +204,18 @@ class RouteFollowerNode(Node):
             Bool, road_block_topic, self._on_road_blocked, self.qos_vol
         )
 
+        # 層スライスの観測値は回避幅の上限に使う。未受信でも従来どおり動作する。
+        self.sub_layers = self.create_subscription(
+            ObstacleLayers, obstacle_layers_topic, self._on_obstacle_layers, self.qos_be
+        )
+
         self.pub_target = self.create_publisher(PoseStamped, active_target_topic, self.qos_vol)
         self.pub_state = self.create_publisher(FollowerState, follower_state_topic, self.qos_vol)
         # recog_flag は値変化時のみ送るため、標準のVolatile QoSを使用する。
         self.pub_recog_flag = self.create_publisher(Int32, recog_flag_topic, self.qos_vol)
 
         self.cli_report_stuck = self.create_client(ReportStuck, report_stuck_service)
+        self.advice_client = ActionClient(self, RequestAvoidanceAdvice, advice_action_name)
 
         # リマップ適用後の名称をログ用に保存
         self.active_route_topic = self._resolve_topic_name(active_route_topic)
@@ -183,6 +228,16 @@ class RouteFollowerNode(Node):
         self.active_target_topic = self._resolve_topic_name(active_target_topic)
         self.follower_state_topic = self._resolve_topic_name(follower_state_topic)
         self.report_stuck_service_name = self._resolve_service_name(report_stuck_service)
+        self.obstacle_layers_topic = self._resolve_topic_name(obstacle_layers_topic)
+        self.advice_action_name = advice_action_name
+
+        # 助言要求の進行管理。結果は callback で受け取り、次の tick で Core へ渡す。
+        self._advice_lock = threading.Lock()
+        self._advice_goal_handle = None
+        self._advice_result: Optional[AdviceDecision] = None
+        self._advice_reason: str = ""
+        self._advice_result_ready: bool = False
+        self._advice_deadline: Optional[float] = None
 
         self._report_lock = threading.Lock()
         self._report_stuck_pending: bool = False
@@ -319,12 +374,143 @@ class RouteFollowerNode(Node):
         # recog_flag 出力
         self._update_recog_flag(previous_status)
 
+        # AI助言の結果反映と要求送信
+        self._process_advice_result()
+        self._maybe_request_advice()
+
         # /report_stuck応答の反映
         self._process_report_stuck_result()
 
         # stuck報告判定
         if self.core.status == self.core.status.WAITING_REROUTE:
             self._handle_stuck_report()
+
+    def _on_obstacle_layers(self, msg: ObstacleLayers) -> None:
+        """層スライスの観測値から、全層で共通に使える左右の余裕を Core へ渡す.
+
+        点が 1 点も無い層は未観測であり、障害物が無いことを意味しないため最小値の
+        算出から外す。全層が未観測の場合は余裕なしとして扱わず、Core 側が採取幅と
+        大域上限だけで判断できるよう、値を更新しない。
+        """
+        observed = [layer for layer in msg.layers if layer.point_count > 0]
+        if not observed:
+            return
+        left = min(float(layer.available_left_offset_m) for layer in observed)
+        right = min(float(layer.available_right_offset_m) for layer in observed)
+        self.core.update_layer_clearance(left, right)
+
+    def _maybe_request_advice(self) -> None:
+        """Core が助言を求めている場合に action の goal を送る."""
+        request = self.core.take_advice_request()
+        if request is None:
+            return
+        if not self.advice_client.server_is_ready():
+            self.get_logger().warn("avoidance_advisor が応答しないため従来の回避を使う。")
+            self.core.submit_advice(None, "server_unavailable")
+            return
+
+        goal = RequestAvoidanceAdvice.Goal()
+        goal.waypoint_label = request.waypoint_label
+        goal.waypoint_left_open_m = float(request.waypoint_left_open_m)
+        goal.waypoint_right_open_m = float(request.waypoint_right_open_m)
+        goal.front_clearance_m = float(request.front_clearance_m)
+        goal.hint_left_offset_m = float(request.hint_left_offset_m)
+        goal.hint_right_offset_m = float(request.hint_right_offset_m)
+        goal.min_offset_m = float(request.min_offset_m)
+        goal.max_offset_m = float(request.max_offset_m)
+
+        with self._advice_lock:
+            self._advice_deadline = time.time() + self.core.advice_wait_limit_sec
+        future = self.advice_client.send_goal_async(goal)
+        future.add_done_callback(self._on_advice_goal_response)
+
+    def _on_advice_goal_response(self, future) -> None:
+        """goal の受理・拒否を受け取る."""
+        try:
+            goal_handle = future.result()
+        except Exception as error:  # 通信失敗は従来の回避で続行する
+            self._store_advice_result(None, f"send_failed:{error}")
+            return
+        if not goal_handle.accepted:
+            self._store_advice_result(None, "rejected")
+            return
+        with self._advice_lock:
+            self._advice_goal_handle = goal_handle
+        goal_handle.get_result_async().add_done_callback(self._on_advice_result)
+
+    def _on_advice_result(self, future) -> None:
+        """助言の結果を受け取り、次の tick で Core へ渡せるよう保持する."""
+        try:
+            result = future.result().result
+        except Exception as error:
+            self._store_advice_result(None, f"result_failed:{error}")
+            return
+        if not result.advice_valid:
+            self._store_advice_result(None, result.failure_reason or "invalid")
+            return
+        self._store_advice_result(self._to_advice_decision(result.advice), "")
+
+    def _to_advice_decision(self, advice: AvoidanceAdvice) -> AdviceDecision:
+        """ROS メッセージを Core の助言表現へ写す."""
+        if advice.action == AvoidanceAdvice.ACTION_WAIT:
+            action = "wait"
+        elif advice.action == AvoidanceAdvice.ACTION_AVOID:
+            action = "avoid"
+        else:
+            action = ""
+        if advice.side == AvoidanceAdvice.SIDE_LEFT:
+            side = "L"
+        elif advice.side == AvoidanceAdvice.SIDE_RIGHT:
+            side = "R"
+        else:
+            side = ""
+        return AdviceDecision(
+            action=action,
+            side=side,
+            offset_m=float(advice.offset_m),
+            wait_sec=float(advice.wait_sec),
+            is_moving=bool(advice.is_moving),
+            confidence=float(advice.confidence),
+            obstacle_class=str(advice.obstacle_class),
+            request_id=str(advice.request_id),
+        )
+
+    def _store_advice_result(self, decision: Optional[AdviceDecision],
+                             reason: str) -> None:
+        with self._advice_lock:
+            self._advice_result = decision
+            self._advice_reason = reason
+            self._advice_result_ready = True
+            self._advice_goal_handle = None
+            self._advice_deadline = None
+
+    def _process_advice_result(self) -> None:
+        """受領済みの助言を Core へ渡す。待機上限を過ぎた要求は取り消す."""
+        with self._advice_lock:
+            ready = self._advice_result_ready
+            decision = self._advice_result
+            reason = self._advice_reason
+            deadline = self._advice_deadline
+            goal_handle = self._advice_goal_handle
+            if ready:
+                self._advice_result = None
+                self._advice_reason = ""
+                self._advice_result_ready = False
+        if ready:
+            self.core.submit_advice(decision, reason)
+            return
+        if deadline is None or time.time() < deadline:
+            return
+        # 待機上限を過ぎた。goal を取り消して従来の回避へ退避する。
+        self.get_logger().warn("AI助言が待機上限内に返らないため従来の回避を使う。")
+        if goal_handle is not None:
+            goal_handle.cancel_goal_async()
+        with self._advice_lock:
+            self._advice_goal_handle = None
+            self._advice_deadline = None
+            self._advice_result = None
+            self._advice_result_ready = False
+        self.core.submit_advice(None, "timeout")
 
     def _process_report_stuck_result(self) -> None:
         with self._report_lock:

@@ -18,6 +18,10 @@
 `robot_navigator` が距離（`front_clearance_m`）、`route_follower` が閉塞
 （`front_blocked`）と左右幅を参照する。
 
+**前方閉塞の判定は `/scan`（topURG）のみを入力とする。** MID-360 から作る水平スライス
+（`lidar_layer_slicer`）は停止判定に使わない。スライスは回避幅の上限と AI 助言への
+状況説明に使う観測値であり、停止の契機を増やさない分担にしている。
+
 単一の 2D LiDAR が `base_link` に前向きで固定搭載されていることを前提とし、**TF 変換を
 行わない。** 取付位置や姿勢の補正は持たない。
 

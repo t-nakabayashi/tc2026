@@ -12,6 +12,7 @@
 - ミッション設定 (`MissionInfo`) やフォロワ状態 (`FollowerState`) の共有メッセージ定義。
 - `/get_route`・`/update_route`・`/report_stuck` 向けサービス定義。
 - 障害物回避支援情報 (`ObstacleAvoidanceHint`) の定義。
+- AI エージェントの回避助言 (`AvoidanceAdvice`) と、その要求用 action (`RequestAvoidanceAdvice`) の定義。
 
 ## 起動方法
 本パッケージはノードを持たず、`colcon build` により他パッケージと同時にビルドされます。
@@ -19,6 +20,7 @@
 ```bash
 ros2 interface show tc_route_msgs/msg/Route
 ros2 interface show tc_route_msgs/srv/ReportStuck
+ros2 interface show tc_route_msgs/action/RequestAvoidanceAdvice
 ```
 
 ## 外部インタフェース
@@ -38,6 +40,7 @@ ros2 interface show tc_route_msgs/srv/ReportStuck
 | `DriveModeStatus` | 自律/手動モード、入力鮮度、出力元、復帰待ち状態。 | `drive_mode_manager`, `robot_console` |
 | `ActiveTargetLlh` | 現在の目標のLLH表示情報。 | `geo_pose_converter`, `robot_console` |
 | `MotionLimits` | ドライバが確認した速度・加減速度上限とstamp。 | `ypspur_ros2`, `robot_navigator` |
+| `AvoidanceAdvice` | AI エージェントが返した回避方向・オフセット・待機時間。 | `avoidance_advisor`, `route_follower` |
 
 ### サービス定義
 | 名称 | 概要 | リクエスト主要項目 | 主な利用ノード |
@@ -45,6 +48,11 @@ ros2 interface show tc_route_msgs/srv/ReportStuck
 | `GetRoute` | 初期ルートを取得。応答で `Route` を返す。 | `start_label`・`goal_label`・`checkpoint_labels`。 | `route_manager` → `route_planner` |
 | `UpdateRoute` | 滞留時の部分ルート差し替え。 | `prev_index`・`current_index`・`route_version`・`reason`。 | `route_manager` ↔ `route_planner` |
 | `ReportStuck` | 滞留報告と再計画結果返却。 | `route_version`・`current_index`・`reason_code`・`reason_detail`・`avoid_trial_count`。 | `route_follower` → `route_manager` |
+
+### action 定義
+| 名称 | 概要 | goal 主要項目 | 主な利用ノード |
+|------|------|--------------|---------------|
+| `RequestAvoidanceAdvice` | 停止中に回避の助言を要求する。result で `AvoidanceAdvice` と採否を返す。 | `waypoint_left_open_m`・`waypoint_right_open_m`・`front_clearance_m`・`min_offset_m`・`max_offset_m`。 | `route_follower` → `avoidance_advisor` |
 
 ## パラメータ
 - 本パッケージが公開するパラメータはありません。
@@ -55,6 +63,8 @@ ros2 interface show tc_route_msgs/srv/ReportStuck
 - `ReportStuck.Response.decision_code` は `route_manager` の再計画・シフト・スキップ判断に一致し、
   `offset_hint` が `route_follower` への横オフセット指示となります。
 - `ObstacleAvoidanceHint.front_clearance_m` は `robot_navigator`・`route_follower` の減速／停止条件に利用されます。
+- `AvoidanceAdvice` は提案値です。`action=ACTION_UNKNOWN`、`advice_valid=false`、確信度不足のいずれでも `route_follower` は従来の回避へ退避します。採用する場合も waypoint の開放幅・実測空き幅・大域上限でクランプした範囲内に限ります。
+- `RequestAvoidanceAdvice` は待機上限を client 側が持ちます。cancel された goal に対して server は起動中の外部プロセスを終了します。
 - `MotionLimits`は`header`と、線/角速度上限、線加速度、線減速度、角加速度を保持します。
   既定の`/motion_limits`はRELIABLE / VOLATILE / depth=1の継続配信で、latchedな設定通知ではありません。
   `robot_navigator`はドライバの能力が要求値以上で、stampと受信がともに新しい場合だけ採用します。

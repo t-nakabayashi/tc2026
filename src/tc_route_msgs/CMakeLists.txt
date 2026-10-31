@@ -8,6 +8,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(tc_geo_msgs REQUIRED)
+find_package(action_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/FollowerState.msg"
@@ -20,10 +21,12 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ObstacleAvoidanceHint.msg"
   "msg/DriveModeStatus.msg"
   "msg/ActiveTargetLlh.msg"
+  "msg/AvoidanceAdvice.msg"
   "srv/GetRoute.srv"
   "srv/UpdateRoute.srv"
   "srv/ReportStuck.srv"
-  DEPENDENCIES geometry_msgs sensor_msgs std_msgs builtin_interfaces tc_geo_msgs
+  "action/RequestAvoidanceAdvice.action"
+  DEPENDENCIES geometry_msgs sensor_msgs std_msgs builtin_interfaces tc_geo_msgs action_msgs
 )
 
 ament_export_dependencies(rosidl_default_runtime)

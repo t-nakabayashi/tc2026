@@ -67,7 +67,11 @@ def setup(context):
         PythonLaunchDescriptionSource(str(shares[0]/'launch/bringup.launch.py')),
         launch_arguments={'environment': 'real', 'session': str(output/'session.yaml'),
                           'start_ui': 'false', 'initial_drive_mode': 'autonomous',
-                          'start_teleop': 'true', 'joy_input': 'joy_node'}.items())]
+                          'start_teleop': 'true', 'joy_input': 'joy_node',
+                          # 記録は既定で行う。保存先は媒体を指定できるよう引数で渡す。
+                          'record_bag': context.launch_configurations.get('record_bag', 'true'),
+                          'bag_directory': context.launch_configurations.get('bag_directory', ''),
+                          }.items())]
 
 
 def generate_launch_description():
@@ -79,4 +83,8 @@ def generate_launch_description():
         DeclareLaunchArgument('antenna_baseline_m', default_value='0', description='0は採取時の間隔を継承。変更時は実測mを指定'),
         DeclareLaunchArgument('master_forward_m', default_value='', description='車輪中心からの主アンテナ前後位置m。後方は負。空欄は採取時の位置を継承'),
         DeclareLaunchArgument('output_root', default_value='~/route_runs'),
+        DeclareLaunchArgument('record_bag', default_value='true', choices=['true', 'false'],
+                              description='走行のrosbagを自動記録する'),
+        DeclareLaunchArgument('bag_directory', default_value='',
+                              description='bagの保存先。空はROBOT_CONSOLE_BAG_DIRか~/rosbags'),
         OpaqueFunction(function=setup)])

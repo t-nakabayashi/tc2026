@@ -159,9 +159,10 @@ drive mode・`manual_start` の組み合わせから判定する。
 | 1 | follower が `WAITING_STOP` | 停止 waypoint で待機中（信号/停止線） |
 | 2 | follower が `WAITING_REROUTE` | 再経路待ち（route_manager の応答待ち） |
 | 3 | follower が `STAGNATION_DETECTED` | 滞留検知（回避判断中） |
-| 4 | route が `holding` | route_manager holding: 理由 |
-| 5 | drive mode が `manual` | 手動介入中（drive_mode=manual） |
-| 6 | 自律復帰待ち | 自律復帰待ち（auto resume pending） |
+| 4 | follower が `WAITING_OBSTACLE` | 移動障害の通過待ち（人・ロボット） |
+| 5 | route が `holding` | route_manager holding: 理由 |
+| 6 | drive mode が `manual` | 手動介入中（drive_mode=manual） |
+| 7 | 自律復帰待ち | 自律復帰待ち（auto resume pending） |
 
 走行モードは**実際に走行制御が選択しているモード（`drive_mode_status`）を正**とし、
 未受信の間だけ起動・設定タブの選択値で代替する。

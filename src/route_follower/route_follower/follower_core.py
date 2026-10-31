@@ -80,6 +80,36 @@ class HintSample:
 
 
 @dataclass
+class AdviceDecision:
+    """AI 助言の採用結果（ROS メッセージから写した値）.
+
+    offset_m は助言側で waypoint 開放幅と大域上限へクランプ済みだが、Core でも
+    実測空き幅を含めた上限で再度クランプする。助言の経路だけで幅の保証を完結させない。
+    """
+    action: str = ""            # "avoid" | "wait"
+    side: str = ""              # "L" | "R" | ""
+    offset_m: float = 0.0
+    wait_sec: float = 0.0
+    is_moving: bool = False
+    confidence: float = 0.0
+    obstacle_class: str = ""
+    request_id: str = ""
+
+
+@dataclass
+class AdviceRequestSpec:
+    """助言を要求するときに渡す条件。Node が action の goal へ写す."""
+    waypoint_label: str = ""
+    waypoint_left_open_m: float = 0.0
+    waypoint_right_open_m: float = 0.0
+    front_clearance_m: float = math.inf
+    hint_left_offset_m: float = 0.0
+    hint_right_offset_m: float = 0.0
+    min_offset_m: float = 0.0
+    max_offset_m: float = 0.0
+
+
+@dataclass
 class FollowerOutput:
     """tick() の出力。target/state は必要時のみ埋める。"""
     target_pose: Optional[Pose] = None
@@ -92,6 +122,7 @@ class FollowerStatus(Enum):
     WAITING_STOP = auto()
     STAGNATION_DETECTED = auto()
     AVOIDING = auto()
+    WAITING_OBSTACLE = auto()
     WAITING_REROUTE = auto()
     FINISHED = auto()
     ERROR = auto()
@@ -133,6 +164,21 @@ class FollowerCore:
         # 再経路待機
         self.reroute_timeout_sec = 30.0
 
+        # AI 助言（既定は無効。有効化しない限り従来どおりの動作になる）
+        self.use_ai_advice = False
+        # 停止が継続してから問い合わせるまでの時間
+        self.advice_trigger_hold_sec = 3.0
+        # 滞留検知後に助言の到着を待つ上限
+        self.advice_wait_limit_sec = 3.0
+        # 同じ障害物への連続した問い合わせを抑える条件
+        self.advice_cooldown_sec = 20.0
+        self.advice_cooldown_m = 3.0
+        # 呼び出し回数の上限
+        self.advice_budget_per_min = 4
+        self.advice_budget_total = 30
+        # 待機の上限（助言が返す待機時間はこの値で打ち切る）
+        self.max_obstacle_wait_sec = 30.0
+
         # road_blocked 起因のリルート抑制用ホールド時間
         self.road_blocked_confirmation_sec = 5.0
 
@@ -167,6 +213,29 @@ class FollowerCore:
 
         # 直近の滞留理由
         self.last_stagnation_reason = ""
+
+        # ---- AI 助言の内部状態 ----
+        # 速度ゼロかつ前方遮蔽が継続し始めた時刻
+        self._advice_stop_since: Optional[float] = None
+        # 問い合わせ中か、および要求を出した時刻
+        self._advice_inflight: bool = False
+        self._advice_request_time: Optional[float] = None
+        # 受領済みの助言と、その waypoint index
+        self._advice_result: Optional[AdviceDecision] = None
+        self._advice_result_index: int = -1
+        self._advice_failure_reason: str = ""
+        # 呼び出しの抑制に使う履歴
+        self._advice_call_times: Deque[float] = deque()
+        self._advice_call_total: int = 0
+        self._advice_last_call_time: Optional[float] = None
+        self._advice_last_call_pose: Optional[Pose] = None
+        # 層スライス由来の実測空き幅（鮮度付き）
+        self._layer_left_open_m: float = 0.0
+        self._layer_right_open_m: float = 0.0
+        self._layer_stamp: Optional[float] = None
+        self.layer_clearance_timeout_sec = 2.0
+        # 待機の期限
+        self.obstacle_wait_until: Optional[float] = None
         
         # ---- Control（manual_start / sig_recog / road_blocked）----
         self._ctrl_lock = threading.Lock()
@@ -363,6 +432,10 @@ class FollowerCore:
         self.avoid_subgoals.clear()
         self.avoid_attempt_count = 0
         self.last_applied_offset_m = 0.0
+        self._advice_result = None
+        self._advice_result_index = -1
+        self._advice_stop_since = None
+        self.obstacle_wait_until = None
         self.last_stagnation_reason = ""
         self.reroute_wait_start = None
         self.reroute_wait_deadline = None
@@ -421,6 +494,9 @@ class FollowerCore:
 
         cur_wp = self.route.waypoints[self.index]
         cur_pose = self.current_pose
+
+        # 停止と前方遮蔽の継続を追跡する（助言の問い合わせ条件）。
+        self._update_advice_trigger(fb_major)
 
         # --- 1) 回避中の処理 ---
         if self.avoid_active and self.avoid_subgoals:
@@ -490,6 +566,32 @@ class FollowerCore:
                 self.status = FollowerStatus.FINISHED
                 self.log("[FollowerCore] STOP解除 -> FINISHED (last waypoint)")
                 return FollowerOutput(None, self._make_state_dict())
+
+        # --- 2.5) WAITING_OBSTACLE：移動障害の通過待ち ---
+        if self.status == FollowerStatus.WAITING_OBSTACLE:
+            if not fb_major:
+                # 前方が空いた。待機を終えてそのまま追従へ戻る。前車が動き出した場合も
+                # ここを通り、追い越さずに追従する形になる。
+                self.status = FollowerStatus.RUNNING
+                self.obstacle_wait_until = None
+                self.last_stagnation_reason = ""
+                self.stagnation_grace_until = time.time() + self.stagnation_grace_sec
+                self.log("[FollowerCore] Obstacle cleared during wait -> RUNNING")
+                return FollowerOutput(self.last_target, self._make_state_dict())
+            if self.obstacle_wait_until is not None and time.time() < self.obstacle_wait_until:
+                return FollowerOutput(self.last_target, self._make_state_dict())
+
+            # 待機上限を過ぎても解消しない。従来の回避を 1 回試みる。
+            self.obstacle_wait_until = None
+            _, wait_med_l, wait_med_r, _ = self._get_hint_snapshot()
+            if self._start_avoidance_sequence(cur_wp, cur_pose, wait_med_l, wait_med_r):
+                self.status = FollowerStatus.AVOIDING
+                self.last_stagnation_reason = "wait_timeout"
+                self.log("[FollowerCore] Wait timeout -> start avoidance")
+                return FollowerOutput(self.last_target, self._make_state_dict())
+            self.last_stagnation_reason = "no_space"
+            self._enter_waiting_reroute()
+            return FollowerOutput(self.last_target, self._make_state_dict())
 
         # --- 3) WAITING_REROUTE の解除・タイムアウト管理 ---
         if self.status == FollowerStatus.WAITING_REROUTE:
@@ -585,7 +687,20 @@ class FollowerCore:
                         return FollowerOutput(self.last_target, self._make_state_dict())
 
                     self.last_stagnation_reason = "front_blocked"
-                    success = self._start_avoidance_sequence(cur_wp, cur_pose, med_l, med_r)
+
+                    # AI 助言を使う場合、到着済みなら採用し、未着なら待機上限まで待つ。
+                    advice = None
+                    if self.use_ai_advice:
+                        advice = self._take_advice_for_current_waypoint()
+                        if advice is None and self._advice_inflight and \
+                                not self._advice_wait_elapsed():
+                            self.status = FollowerStatus.STAGNATION_DETECTED
+                            return FollowerOutput(self.last_target, self._make_state_dict())
+                        if advice is not None and advice.action == "wait":
+                            return self._enter_waiting_obstacle(advice)
+
+                    success = self._start_avoidance_sequence(
+                        cur_wp, cur_pose, med_l, med_r, advice)
                     if success:
                         self.status = FollowerStatus.AVOIDING
                         return FollowerOutput(self.last_target, self._make_state_dict())
@@ -598,6 +713,196 @@ class FollowerCore:
             return FollowerOutput(self.last_target, self._make_state_dict())
 
         # それ以外の状態はここには来ないはずだが保険
+        return FollowerOutput(self.last_target, self._make_state_dict())
+
+    # ========================= AI 助言 =========================
+    def update_layer_clearance(self, left_open_m: float, right_open_m: float) -> None:
+        """層スライス由来の実測空き幅を受け取る.
+
+        Args:
+            left_open_m (float): 左へ使用可能な横移動量 [m].
+            right_open_m (float): 右へ使用可能な横移動量 [m].
+        """
+        with self._hint_lock:
+            self._layer_left_open_m = max(float(left_open_m), 0.0)
+            self._layer_right_open_m = max(float(right_open_m), 0.0)
+            self._layer_stamp = time.time()
+
+    def _get_layer_clearance(self) -> Tuple[float, float, bool]:
+        """実測空き幅と、その値が新しいかを返す."""
+        with self._hint_lock:
+            left = self._layer_left_open_m
+            right = self._layer_right_open_m
+            stamp = self._layer_stamp
+        if stamp is None or (time.time() - stamp) > self.layer_clearance_timeout_sec:
+            return 0.0, 0.0, False
+        return left, right, True
+
+    def take_advice_request(self) -> Optional[AdviceRequestSpec]:
+        """助言を要求すべき状態なら、要求の条件を返す（1 回だけ）.
+
+        Node は毎周期これを呼び、戻り値がある場合に action の goal を送る。
+        返した時点で問い合わせ中として扱うため、同じ要求が二重に出ることはない。
+        """
+        if not self.use_ai_advice or self._advice_inflight:
+            return None
+        if self.status not in (FollowerStatus.RUNNING, FollowerStatus.STAGNATION_DETECTED):
+            return None
+        if self.route is None or not self.route.waypoints:
+            return None
+        if self._advice_result is not None and self._advice_result_index == self.index:
+            return None
+        if self._advice_stop_since is None:
+            return None
+        now = time.time()
+        if (now - self._advice_stop_since) < self.advice_trigger_hold_sec:
+            return None
+        if not self._advice_budget_available(now):
+            return None
+        if not self._advice_cooldown_elapsed(now):
+            return None
+
+        wp = self.route.waypoints[self.index]
+        _, med_l, med_r, _ = self._get_hint_snapshot()
+        left_max, right_max = self._effective_side_limits(wp)
+        self._advice_inflight = True
+        self._advice_request_time = now
+        self._advice_call_times.append(now)
+        self._advice_call_total += 1
+        self._advice_last_call_time = now
+        self._advice_last_call_pose = self.current_pose
+        self.log(
+            f"[FollowerCore] Request AI advice index={self.index} "
+            f"left_max={left_max:.2f} right_max={right_max:.2f} "
+            f"calls={self._advice_call_total}")
+        return AdviceRequestSpec(
+            waypoint_label=wp.label,
+            waypoint_left_open_m=left_max,
+            waypoint_right_open_m=right_max,
+            front_clearance_m=self._hint_front_clearance_latest,
+            hint_left_offset_m=med_l,
+            hint_right_offset_m=med_r,
+            min_offset_m=self.avoid_min_offset_m,
+            max_offset_m=self.avoid_max_offset_m,
+        )
+
+    def submit_advice(self, decision: Optional[AdviceDecision], reason: str = "") -> None:
+        """助言の結果を受け取る。採用できない場合は decision=None を渡す."""
+        self._advice_inflight = False
+        self._advice_failure_reason = reason
+        self._advice_result = decision
+        self._advice_result_index = self.index if decision is not None else -1
+        if decision is None:
+            self.log(f"[FollowerCore] AI advice unavailable: {reason}")
+        else:
+            self.log(
+                f"[FollowerCore] AI advice received action={decision.action} "
+                f"side={decision.side} offset={decision.offset_m:.2f} "
+                f"wait={decision.wait_sec:.1f} class={decision.obstacle_class}")
+
+    def _advice_budget_available(self, now: float) -> bool:
+        """呼び出し予算が残っているか."""
+        while self._advice_call_times and (now - self._advice_call_times[0]) > 60.0:
+            self._advice_call_times.popleft()
+        if self.advice_budget_per_min > 0 and \
+                len(self._advice_call_times) >= self.advice_budget_per_min:
+            return False
+        if self.advice_budget_total > 0 and \
+                self._advice_call_total >= self.advice_budget_total:
+            return False
+        return True
+
+    def _advice_cooldown_elapsed(self, now: float) -> bool:
+        """前回の問い合わせから、時間または移動距離の条件を満たしたか.
+
+        低速の先行車へ追い付いて止まる動作を繰り返す場合に、同じ相手へ繰り返し
+        問い合わせることを防ぐ。どちらか一方を満たせば再問い合わせを許す。
+        """
+        if self._advice_last_call_time is None:
+            return True
+        if (now - self._advice_last_call_time) >= self.advice_cooldown_sec:
+            return True
+        if self._advice_last_call_pose is not None and self.current_pose is not None:
+            moved = self._euclid_xy(self.current_pose, self._advice_last_call_pose)
+            if moved >= self.advice_cooldown_m:
+                return True
+        return False
+
+    def _advice_wait_elapsed(self) -> bool:
+        """滞留検知後、助言の到着を待つ上限を過ぎたか."""
+        if self._advice_request_time is None:
+            return True
+        return (time.time() - self._advice_request_time) >= self.advice_wait_limit_sec
+
+    def _update_advice_trigger(self, fb_major: bool) -> None:
+        """速度ゼロかつ前方遮蔽が継続しているかを追跡する.
+
+        滞留検知（15 秒）を待たずに問い合わせを始めるための条件であり、滞留検知の
+        判定自体は変更しない。停止が短い場合は問い合わせない。
+        """
+        if not self.use_ai_advice:
+            self._advice_stop_since = None
+            return
+        stopped = self._is_currently_stopped()
+        if fb_major and stopped:
+            if self._advice_stop_since is None:
+                self._advice_stop_since = time.time()
+            return
+        self._advice_stop_since = None
+        if not fb_major:
+            # 前方が空いたら、保持していた助言は破棄する。
+            self._advice_result = None
+            self._advice_result_index = -1
+
+    def _is_currently_stopped(self) -> bool:
+        """直近の位置履歴から、ほぼ停止しているかを判定する."""
+        if not self.pose_hist:
+            return False
+        now = time.time()
+        recent = [tp for tp in reversed(self.pose_hist) if (now - tp[0]) <= self.window_sec]
+        if len(recent) < 2:
+            return False
+        distance = self._euclid_xy(recent[0][1], recent[-1][1])
+        return (distance / max(self.window_sec, 1e-6)) < self.min_speed_mps
+
+    def _take_advice_for_current_waypoint(self) -> Optional[AdviceDecision]:
+        """現在の waypoint 向けに受領済みの助言を 1 回だけ取り出す."""
+        if self._advice_result is None or self._advice_result_index != self.index:
+            return None
+        decision = self._advice_result
+        self._advice_result = None
+        self._advice_result_index = -1
+        return decision
+
+    def _effective_side_limits(self, wp: Waypoint) -> Tuple[float, float]:
+        """左右それぞれの採用可能な最大オフセットを求める.
+
+        採取幅（waypoint）、実測空き幅（層スライス）、大域上限の最小値とする。
+        実測空き幅が新しくない場合は採取幅と大域上限だけで決める。観測が無いことを
+        「空いている」とも「塞がっている」とも扱わない。
+        """
+        left_limit = max(float(getattr(wp, "left_open", 0.0)), 0.0)
+        right_limit = max(float(getattr(wp, "right_open", 0.0)), 0.0)
+        left_max = min(left_limit, self.avoid_max_offset_m)
+        right_max = min(right_limit, self.avoid_max_offset_m)
+        layer_left, layer_right, fresh = self._get_layer_clearance()
+        if fresh:
+            left_max = min(left_max, layer_left)
+            right_max = min(right_max, layer_right)
+        return left_max, right_max
+
+    def _enter_waiting_obstacle(self, advice: AdviceDecision) -> FollowerOutput:
+        """移動障害の通過待ちへ入る.
+
+        待機中は目標を変えず、前方遮蔽が解消した時点で追従へ戻る。待機時間は助言値を
+        使い、上限で打ち切る。
+        """
+        wait_sec = min(max(float(advice.wait_sec), 0.0), self.max_obstacle_wait_sec)
+        self.obstacle_wait_until = time.time() + wait_sec
+        self.status = FollowerStatus.WAITING_OBSTACLE
+        self.last_stagnation_reason = "waiting_obstacle"
+        self.log(f"[FollowerCore] Wait for moving obstacle {wait_sec:.1f}s "
+                 f"class={advice.obstacle_class} id={advice.request_id}")
         return FollowerOutput(self.last_target, self._make_state_dict())
 
     # ========================= 補助：滞留・回避・状態遷移 =========================
@@ -667,21 +972,32 @@ class FollowerCore:
         return False
 
     def _start_avoidance_sequence(self, wp: Waypoint, cur_pose: Pose,
-                                  med_l: float, med_r: float) -> bool:
-        """Hint統計とWP上限を考慮して L字回避サブゴール（2点）を生成・開始。"""
-        # Waypoint 上限（0 or 負は0扱い）
-        left_limit = max(float(getattr(wp, "left_open", 0.0)), 0.0)
-        right_limit = max(float(getattr(wp, "right_open", 0.0)), 0.0)
+                                  med_l: float, med_r: float,
+                                  advice: Optional[AdviceDecision] = None) -> bool:
+        """Hint統計・実効上限・AI助言から L字回避サブゴール（2点）を生成・開始。
 
-        # 実効上限（グローバル上限とWP上限のmin）
-        left_max = min(left_limit, self.avoid_max_offset_m)
-        right_max = min(right_limit, self.avoid_max_offset_m)
+        実効上限は採取幅・実測空き幅・大域上限の最小値であり、最小オフセットが
+        それを上回る側は回避できないものとして扱う。最小オフセットを優先して
+        上限を超える横移動を作らない。
+
+        Args:
+            wp (Waypoint): 現在の waypoint.
+            cur_pose (Pose): 現在位置姿勢.
+            med_l (float): hint の左オフセット中央値 [m].
+            med_r (float): hint の右オフセット中央値 [m].
+            advice (Optional[AdviceDecision]): 採用する AI 助言. None なら従来の選択.
+
+        Returns:
+            bool: 回避を開始できたか.
+        """
+        left_max, right_max = self._effective_side_limits(wp)
 
         def pick_offset(hint_open: float, side_max: float) -> float:
-            if hint_open <= 0.0 or side_max <= 0.0:
+            # 上限が最小オフセットに満たない側は、その幅では回避が成立しない。
+            if hint_open <= 0.0 or side_max < self.avoid_min_offset_m:
                 return 0.0
             allowed = min(hint_open, side_max)
-            return max(self.avoid_min_offset_m, min(allowed, side_max))
+            return min(max(allowed, self.avoid_min_offset_m), side_max)
 
         off_L = pick_offset(med_l, left_max)
         off_R = pick_offset(med_r, right_max)
@@ -691,12 +1007,18 @@ class FollowerCore:
             options.append(("L", off_L))
         if off_R > 0.0:
             options.append(("R", off_R))
-        if not options:
-            return False
 
-        # 最小オフセット優先（同値なら左優先）
-        options.sort(key=lambda x: (x[1], 0 if x[0] == "L" else 1))
-        side, offset = options[0]
+        side_offset = self._offset_from_advice(advice, left_max, right_max)
+        if side_offset is not None:
+            side, offset = side_offset
+            self.log(f"[FollowerCore] Use AI advice for avoidance: side={side} "
+                     f"offset={offset:.2f}m id={advice.request_id}")
+        else:
+            if not options:
+                return False
+            # 最小オフセット優先（同値なら左優先）
+            options.sort(key=lambda x: (x[1], 0 if x[0] == "L" else 1))
+            side, offset = options[0]
 
         yaw = cur_pose.yaw
         back_offset = max(self.avoid_back_offset_m, 0.0)
@@ -730,6 +1052,28 @@ class FollowerCore:
         self.last_target = p1
         self.log(f"[FollowerCore] Start avoidance: side={side} offset={offset:.2f}m")
         return True
+
+    def _offset_from_advice(self, advice: Optional[AdviceDecision], left_max: float,
+                            right_max: float) -> Optional[Tuple[str, float]]:
+        """助言された方向とオフセットを実効上限へ収める.
+
+        上限が最小オフセットに満たない側の助言は採用しない。助言側でもクランプして
+        いるが、実測空き幅は Core 側にしかないため、ここでも必ず検査する。
+
+        Returns:
+            Optional[Tuple[str, float]]: 採用する (方向, オフセット[m]). 採用しない場合 None.
+        """
+        if advice is None or advice.action != "avoid" or advice.side not in ("L", "R"):
+            return None
+        side_max = left_max if advice.side == "L" else right_max
+        if side_max < self.avoid_min_offset_m or side_max <= 0.0:
+            self.log(f"[FollowerCore] AI advice side={advice.side} has no room "
+                     f"(limit={side_max:.2f}m) -> fallback")
+            return None
+        offset = abs(float(advice.offset_m))
+        if not math.isfinite(offset):
+            return None
+        return advice.side, min(max(offset, self.avoid_min_offset_m), side_max)
 
     # ========================= 汎用ヘルパ =========================
     def _euclid_xy(self, a: Pose, b: Pose) -> float:

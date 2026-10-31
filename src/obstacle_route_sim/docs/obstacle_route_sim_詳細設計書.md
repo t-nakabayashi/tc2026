@@ -44,7 +44,7 @@ fake localization pose、TF、`route_planner`、`route_manager`、`route_followe
 | 要素 | 役割 |
 | --- | --- |
 | `worlds/templates/*.world` | Gazebo Harmonic の base world |
-| `models/robot/model.sdf` | DiffDrive、2D LiDAR、3D LiDAR を持つ差動二輪ロボット |
+| `models/robot/model.sdf` | DiffDrive、2D LiDAR、3D LiDAR、フロントカメラを持つ差動二輪ロボット |
 | `models/pylon/model.sdf` | 静的 pylon 障害物 |
 | `scripts/road_geometry.py` | 道路中心線と幅キーの共通定義 |
 | `scripts/generate_pylon_world.py` | 起動前 world 生成 |
@@ -94,8 +94,8 @@ publish する。
 Gazebo GUI の起動は `start_gazebo_gui` で選ぶ。drive status GUI の起動は
 `start_drive_status_gui` で選ぶ。いずれも確認用であり、走行判断には関与しない。
 
-GUI 確認では robot model 上の門型支柱・梁の上へ Mid-360 が配置され、**センサだけが浮いて
-見えないこと**を確認する（9.2 節）。
+GUI 確認では、車体上面の支持台へ MID-360 が載り、**センサだけが浮いて見えないこと**を
+確認する（9.2 節）。
 
 ## 4. 設定の所在
 
@@ -236,6 +236,22 @@ pylon を 1 本追加する。**
 world template では `<render_engine>ogre2</render_engine>` を明示し、**headless/GPU 権限差で
 レンダリング backend が変わっても sensor 出力が不安定になりにくい構成**とする。
 
+フロントカメラは実機と同じ `/usb_cam/image_raw` を `sensor_msgs/msg/Image` で bridge する。
+AI 助言の入力に使うため、画素数は実機の設定（`hardware.yaml` の `camera`）と揃える。
+
+### 7.4 センサ取付
+
+センサの取付は実機の `icart_bringup/params/hardware.yaml` を正とし、模擬側をそれに合わせる。
+MID-360 は床上 0.562 m、前下がり 26.9°、ロール -0.6° とする。前下がり取付でなければ、
+停止判定が起きる 0.75〜1.5 m で床上 0.35 m や 0.50 m の層を観測できず、水平スライスを
+前提とした回避幅の算出が成立しない。topURG は床上 0.25 m とし、MID-360 より低く置く。
+
+**SDF の link pose は model frame（床面）基準、静的 TF は base_link（車軸中心、床上
+0.15 m）基準である。** 両者を取り違えると層の切り出し高さが車輪半径の分ずれる。
+一致は `tests/test_robot_mount.py` が検査する。
+
+カメラの取付位置は実機で未計測であり、模擬側の値は仮の配置である。
+
 ## 8. 並行性・周期・起動・依存関係
 
 ### 8.1 起動構成
@@ -279,8 +295,7 @@ pylon world 生成を確認する。
 - `gazebo_obstacle_route_stack.launch.py` で `/active_route`、`/active_target`、
   `/cmd_vel/autonomous`、`/cmd_vel`、`/drive_mode_status` が確認でき、**`/cmd_vel` の
   publisher が `drive_cmd_mux_node` のみである**
-- GUI 確認時に robot model 上の門型支柱・梁の上へ Mid-360 が配置され、センサだけが
-  浮いて見えない
+- GUI 確認時に車体上面の支持台へ MID-360 が載り、センサだけが浮いて見えない
 - 決定的 blocker による `AVOIDING` 遷移と `RUNNING` 復帰（7.2 節）
 
 `--record-lio-map` で登録済み点群を分割保存する。共通デジタルツインは歩行者の模擬と

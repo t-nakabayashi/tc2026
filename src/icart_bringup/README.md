@@ -124,5 +124,25 @@ small_gicpライブラリを初期設定する。ICP本体・起動ファイル�
 
 GUIの「実機／自律走行」は `recorded_route.launch.py` を使う。
 `route_directory` に終了済みの採取フォルダを指定し、経路と投影原点を走行用設定へコピーする。
+`record_bag` と `bag_directory` も受け取り、共通起動へそのまま渡す。
+**長時間の走行は内蔵ディスクを埋めるため、外部媒体の保存先を指定する。**
 実機共通起動は時刻同期ゲート成立後に走行系を起動し、manual_startを待つ。
 詳しい条件は[共通起動設計](docs/共通起動設計.md)を参照する。
+
+実機走行ではrosbagを自動で記録する。保存先は`bag_directory`、未指定なら
+`ROBOT_CONSOLE_BAG_DIR`、それも無ければ`~/rosbags`である。
+GUIからの記録開始は、起動側が記録中のため断られる。
+
+```bash
+# 記録先を指定して走る
+ros2 run icart_bringup run_session --session <session.yaml> --environment real \
+  bag_directory:=/media/<媒体>/rosbags
+
+# 記録しない
+ros2 run icart_bringup run_session --session <session.yaml> --environment real \
+  record_bag:=false
+```
+`run_session` の末尾へ `key:=value` を並べると共通launchへそのまま渡る。
+`session`・`environment`・`start_ui` は `run_session` が決めるため指定できない。
+
+実機ではAI助言を使わない。`use_ai_advice:=true`を指定しても無視する。

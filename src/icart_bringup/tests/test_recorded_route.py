@@ -52,6 +52,9 @@ def test_launch_preserves_selected_route_and_waits_for_start(recorded, tmp_path,
     action=module.setup(context)[0]
     args=dict(action.launch_arguments)
     assert args['start_ui']=='false' and args['initial_drive_mode']=='autonomous'
+    # 自律走行は既定でrosbagを記録する。保存先は媒体を指定できるよう素通しする。
+    assert args['record_bag']=='true'
+    assert args['bag_directory']==''
     session=load_session(Path(args['session']),'real')
     from geo_pose_converter.geo_core import load_projection_config_from_yaml
     builder=RouteBuilder(session['route_config'],session['csv_base_dir'],
@@ -76,3 +79,27 @@ def test_launch_preserves_selected_route_and_waits_for_start(recorded, tmp_path,
     assert fusion.observe_gps(0.,np.zeros(3),4,28,.1553,.02**2,.5)
     assert fusion.x is not None
     assert Path(session['projection_params']).read_text()==(recorded/'projection.yaml').read_text() or yaml.safe_load(Path(session['projection_params']).read_text())==yaml.safe_load((recorded/'projection.yaml').read_text())
+
+
+def test_launch_passes_through_the_bag_destination(recorded, tmp_path, monkeypatch):
+    """保存先と記録有無の指定が共通起動へそのまま渡る。
+
+    内蔵ディスクに長時間の走行を書くと容量が尽きるため、運用では外部媒体を指定する。
+    """
+    from launch import LaunchContext
+    spec=importlib.util.spec_from_file_location('recorded_launch2',ROOT/'src/icart_bringup/launch/recorded_route.launch.py')
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    packages={'icart_bringup':'icart_bringup','route_planner':'route_planner','fast_lio':'FAST_LIO','livox_ros_driver2':'livox_ros_driver2'}
+    monkeypatch.setattr(module,'get_package_share_directory',lambda p:str(ROOT/'src'/packages[p]))
+    monkeypatch.setenv('ROS_DOMAIN_ID','0')
+    context=LaunchContext()
+    context.launch_configurations.update(route_directory=str(recorded),
+                                         output_root=str(tmp_path/'runs'),
+                                         antenna_baseline_m='0', master_forward_m='',
+                                         record_bag='false',
+                                         bag_directory=str(tmp_path/'media'))
+
+    args=dict(module.setup(context)[0].launch_arguments)
+
+    assert args['record_bag']=='false'
+    assert args['bag_directory']==str(tmp_path/'media')

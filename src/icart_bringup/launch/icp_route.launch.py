@@ -12,7 +12,8 @@ def generate_launch_description():
                     icp_map_manifest='/media/nkb/TEST/icp_runtime_20261007/map_manifest.json',
                     icp_backend_python_path='/home/nkb/colcon_ws_experiments/glim_runtime/python',
                     antenna_baseline_m='0', master_forward_m='',
-                    output_root='/media/nkb/TEST/icp_route_runs')
+                    output_root='/media/nkb/TEST/icp_route_runs',
+                    record_bag='true', bag_directory='')
     return LaunchDescription([
         *[DeclareLaunchArgument(k, default_value=v) for k, v in defaults.items()],
         IncludeLaunchDescription(PythonLaunchDescriptionSource(str(

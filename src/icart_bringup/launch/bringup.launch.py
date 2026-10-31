@@ -33,6 +33,13 @@ def setup(context) -> list:
     hardware = read_yaml(Path(data['hardware_config'])) if not simulation and data.get('hardware_config') else None
     if hardware:
         validate_runtime(hardware)
+    # 実機の自律走行では AI 助言を使わない。助言なしで回避が作動する記録を取り、
+    # 後から bag 再生で助言の有効性を比べるためである。模擬環境では引数で選べる。
+    use_ai_advice = context.launch_configurations.get('use_ai_advice', 'false') == 'true'
+    if use_ai_advice and hardware:
+        print('[bringup] 実機では AI 助言を使わない。use_ai_advice=true を無視する。')
+        use_ai_advice = False
+
     actions = []
     def node(package: str, executable: str, params: list = None, remaps: list = None) -> Node:
         return Node(package=package, executable=executable, output='screen',
@@ -110,7 +117,8 @@ def setup(context) -> list:
                 node('route_manager', 'route_manager', [{
                     'start_label': str(data.get('start_label', '0')),
                     'goal_label': str(data['goal_label']), 'checkpoint_labels': ['']}]),
-                node('route_follower', 'route_follower', [{'start_immediately': False}]),
+                node('route_follower', 'route_follower', [{
+                    'start_immediately': False, 'use_ai_advice': use_ai_advice}]),
                 node('obstacle_monitor', 'obstacle_monitor'),
                 node('robot_navigator', 'robot_navigator', params=[{
                     'pose_timeout_sec': 1., 'odom_timeout_sec': 1.,
@@ -145,6 +153,35 @@ def setup(context) -> list:
     actions += [RegisterEventHandler(OnProcessExit(target_action=action,
                 on_exit=[EmitEvent(event=Shutdown(reason='共通走行プロセス終了'))]))
                 for action in list(actions) if isinstance(action, ExecuteProcess)]
+    if use_ai_advice:
+        # 層スライスと助言は走行の付帯機能であり、終了しても走行を止めない。このため
+        # 「プロセス終了で全体を停止する」登録より後に追加する。
+        # 助言を使わない基準の走行では起動しない。層の観測値は回避幅の上限に効くため、
+        # 起動すると助言なしの走行が従来の挙動と変わる。層はbagから再現できる。
+        slicer_params = str(Path(get_package_share_directory('lidar_layer_slicer'))
+                            / 'params/default.yaml')
+        advisor_params = str(Path(get_package_share_directory('avoidance_advisor'))
+                             / 'params/default.yaml')
+        cloud_topic = ('/mid360/livox/lidar/points' if simulation
+                       else '/mid360/livox/lidar')
+        actions += [
+            node('lidar_layer_slicer', 'lidar_layer_slicer',
+                 [slicer_params, {'cloud_message_type':
+                                  'pointcloud2' if simulation else 'custom'}],
+                 [('scan', '/scan'), ('points', cloud_topic), ('livox_lidar', cloud_topic)]),
+            node('avoidance_advisor', 'avoidance_advisor', [advisor_params],
+                 [('camera/image_raw', '/usb_cam/image_raw')]),
+        ]
+
+    if hardware and context.launch_configurations.get('record_bag', 'true') == 'true':
+        # 記録は走行の付帯処理であり、失敗しても走行を止めない。このため上の
+        # 「プロセス終了で全体を停止する」登録より後に追加する。
+        bag_directory = context.launch_configurations.get('bag_directory', '')
+        actions.append(ExecuteProcess(
+            cmd=['python3', '-m', 'icart_bringup.bag_record',
+                 *(['--directory', bag_directory] if bag_directory else [])],
+            output='screen'))
+
     if hardware:
         # Only GNSS/LiDAR start before synchronization. Wheel drivers, LIO,
         # fusion, navigator and joystick/mux wait for live raw-packet evidence.
@@ -181,4 +218,10 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument('joy_input', default_value='joy_node', choices=['joy_node', 'external']),
         DeclareLaunchArgument('allow_auto_resume', default_value='true', choices=['true', 'false']),
         DeclareLaunchArgument('start_ui', default_value='false', choices=['true', 'false']),
+        DeclareLaunchArgument('record_bag', default_value='true', choices=['true', 'false'],
+                              description='実機走行でrosbagを自動記録する'),
+        DeclareLaunchArgument('bag_directory', default_value='',
+                              description='bagの保存先。空はROBOT_CONSOLE_BAG_DIRか~/rosbags'),
+        DeclareLaunchArgument('use_ai_advice', default_value='false', choices=['true', 'false'],
+                              description='AI助言を使う。実機では無効のまま扱う'),
         OpaqueFunction(function=setup)])

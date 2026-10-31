@@ -116,6 +116,25 @@ def test_phase_is_paused_with_reason_while_follower_waits_at_stop_waypoint():
     assert '停止waypoint' in state.pause_reason
 
 
+def test_phase_is_paused_with_reason_while_follower_waits_for_a_moving_obstacle():
+    """移動障害の通過待ちを、停止waypointの待機と区別して表示する。
+
+    人や他のロボットを待っている状態は、操作者の介入を要する停止ではない。
+    理由を表示しないと、原因不明の停止と見分けられなくなる。
+    """
+    state = _build(
+        route=RouteView(state='running', total_waypoints=3),
+        follower=FollowerView(state='WAITING_OBSTACLE',
+                              stagnation_reason='waiting_obstacle'),
+        manual_start=True,
+        route_freshness=FreshnessLevel.OK,
+        follower_freshness=FreshnessLevel.OK,
+    )
+
+    assert state.phase == PHASE_PAUSED
+    assert '移動障害' in state.pause_reason
+
+
 def test_phase_is_paused_while_route_manager_is_holding():
     state = _build(
         route=RouteView(state='holding', total_waypoints=3, last_replan_reason='front_blocked'),

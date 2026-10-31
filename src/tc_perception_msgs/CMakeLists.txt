@@ -8,6 +8,8 @@ find_package(std_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/OverlayDetection.msg"
   "msg/PerceptionOverlay.msg"
+  "msg/ObstacleLayer.msg"
+  "msg/ObstacleLayers.msg"
   DEPENDENCIES std_msgs
 )
 

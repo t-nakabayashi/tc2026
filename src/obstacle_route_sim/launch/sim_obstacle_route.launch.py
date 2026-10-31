@@ -98,6 +98,8 @@ def _setup_simulation(context: LaunchContext, *args, **kwargs) -> list:
             "/ypspur_ros/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry",
             "/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan",
             "/mid360/livox/lidar/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked",
+            # AI 助言の入力に使うフロントカメラ。実機と同じ topic 名で配信する。
+            "/usb_cam/image_raw@sensor_msgs/msg/Image[gz.msgs.Image",
             f"{gazebo_pose_topic}@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V",
         ],
         remappings=[(gazebo_pose_topic, "/gazebo/dynamic_pose_info")],
@@ -142,18 +144,29 @@ def _setup_simulation(context: LaunchContext, *args, **kwargs) -> list:
         arguments=["0", "0", "0", "0", "0", "0", "map", "odom"],
         parameters=[{"use_sim_time": use_sim_time}],
     )
+    # センサの静的 TF は base_link（車軸中心、床上 0.15 m）からの相対値で与える。
+    # models/robot/model.sdf の link pose は model frame（床面）基準であり、車輪半径の
+    # 分だけ値が異なる。両者を取り違えると層の切り出し高さが 0.15 m ずれる。
     base_to_laser_tf = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
         name="tf_base_to_laser",
-        arguments=["0.075", "0", "0.25", "0", "0", "0", "base_link", "laser"],
+        arguments=["0.075", "0", "0.10", "0", "0", "0", "base_link", "laser"],
         parameters=[{"use_sim_time": use_sim_time}],
     )
     base_to_mid360_tf = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
         name="tf_base_to_mid360",
-        arguments=["0", "0", "1.005", "0", "0", "0", "base_link", "mid360_frame"],
+        arguments=["0", "0", "0.412", "-0.010472", "0.469494", "0",
+                   "base_link", "mid360_frame"],
+        parameters=[{"use_sim_time": use_sim_time}],
+    )
+    base_to_camera_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="tf_base_to_camera",
+        arguments=["0.115", "0", "0.35", "0", "0", "0", "base_link", "camera_link"],
         parameters=[{"use_sim_time": use_sim_time}],
     )
 
@@ -175,6 +188,7 @@ def _setup_simulation(context: LaunchContext, *args, **kwargs) -> list:
         map_to_odom_tf,
         base_to_laser_tf,
         base_to_mid360_tf,
+        base_to_camera_tf,
     ]
 
 

@@ -70,17 +70,32 @@ def test_final_waypoint_without_line_stop_finishes_and_drops_target() -> None:
     assert out.target_pose is None
 
 
-def test_avoidance_offset_can_exceed_allowed_width() -> None:
-    """許可幅が最小オフセットより狭くても、最小オフセットで回避を開始する.
+def test_avoidance_is_not_started_when_allowed_width_is_too_narrow() -> None:
+    """許可幅が最小オフセットに満たない場合、回避を開始しない.
 
-    avoid_min_offset_m が下限として優先されるため、waypoint が許可した幅
-    (left_open) を超える横移動が生成される。狭所では許可幅の逸脱になる。
+    最小オフセットを下限として優先すると、waypoint が許可した幅 (left_open) を
+    超える横移動を作ってしまう。幅が足りない側は回避できないものとして扱い、
+    呼び出し側は再経路の要求へ進む。
     """
     core = FollowerCore(_NullLogger())
     allowed_m = 0.1
-    core._start_avoidance_sequence(
+
+    started = core._start_avoidance_sequence(
         Waypoint('narrow', Pose(2, 0), left_open=allowed_m), Pose(0, 0), allowed_m, 0
     )
 
-    assert abs(core.last_applied_offset_m) == pytest.approx(core.avoid_min_offset_m)
-    assert abs(core.last_applied_offset_m) > allowed_m
+    assert started is False
+    assert core.last_applied_offset_m == 0.0
+
+
+def test_avoidance_offset_stays_within_the_allowed_width() -> None:
+    """許可幅が最小オフセット以上なら、その幅を超えない横移動を生成する."""
+    core = FollowerCore(_NullLogger())
+    allowed_m = 0.5
+
+    started = core._start_avoidance_sequence(
+        Waypoint('narrow', Pose(2, 0), left_open=allowed_m), Pose(0, 0), 2.0, 0
+    )
+
+    assert started is True
+    assert abs(core.last_applied_offset_m) == pytest.approx(allowed_m)

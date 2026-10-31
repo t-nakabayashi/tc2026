@@ -33,6 +33,7 @@ ros2 launch route_follower route_follower.launch.py \
 | `/active_route` | `tc_route_msgs/Route` | 追従対象ルート。`Route.version` と `start_index` を `FollowerCore` に転送。 | RELIABLE / TRANSIENT_LOCAL |
 | `/localization/pose_enu` | `geometry_msgs/PoseWithCovarianceStamped` | 現在姿勢。2D yaw を算出して `FollowerCore` へ投入。 | RELIABLE / VOLATILE |
 | `/obstacle_avoidance_hint` | `tc_route_msgs/ObstacleAvoidanceHint` | 障害物回避ヒント。最新値を統計化し滞留判定に利用。 | BEST_EFFORT / VOLATILE |
+| `/obstacle/layers` | `tc_perception_msgs/ObstacleLayers` | 水平スライス層の観測値。回避幅の上限に使う。未受信でも動作する。 | BEST_EFFORT / VOLATILE |
 | `/road_blocked` | `std_msgs/Bool` | 道路封鎖入力。Coreで最新状態を保持する。 | RELIABLE / VOLATILE |
 | `/manual_start` | `std_msgs/Bool` | TRUE 受信で手動再開。 | RELIABLE / VOLATILE |
 | `/sig_recog` | `std_msgs/Int32` | 信号認識結果（1=GO, 2=NOGO 等）。 | RELIABLE / VOLATILE |
@@ -49,6 +50,11 @@ ros2 launch route_follower route_follower.launch.py \
 |------|----|------|
 | `/report_stuck` | `tc_route_msgs/srv/ReportStuck` | 滞留判定時に呼び出し。現在 index やオフセット履歴を送信し、再計画方針を受け取る。 |
 
+### action クライアント
+| 名称 | 型 | 説明 |
+|------|----|------|
+| `/request_avoidance_advice` | `tc_route_msgs/action/RequestAvoidanceAdvice` | `use_ai_advice` が true のとき、停止中に回避の助言を要求する。server 未起動・無応答・不採用のいずれでも従来の回避で続行する。 |
+
 ## パラメータ
 | 名称 | 型 | 既定値 | 概要 |
 |------|----|--------|------|
@@ -58,6 +64,15 @@ ros2 launch route_follower route_follower.launch.py \
 | `start_immediately` | bool | `true`（YAML は `false`） | ルート受信直後に自動で RUNNING へ遷移するか。 |
 | `target_frame` | string | `"map"` | Publish する Pose の frame_id。 |
 | `avoid_back_offset_m` | double | `0.5`（YAML は `0.75`） | 回避起点を進行方向後方へ下げる距離[m]。負の場合は 0.0 に補正。 |
+| `use_ai_advice` | bool | `false` | AI 助言を使うか。false の間は従来どおりの回避だけで走る。 |
+| `advice_trigger_hold_sec` | double | `3.0` | 停止と前方閉塞が続いてから助言を要求するまでの時間[s]。 |
+| `advice_wait_limit_sec` | double | `3.0` | 滞留検知後に助言の到着を待つ上限[s]。超えると従来の回避へ移る。 |
+| `advice_cooldown_sec` | double | `20.0` | 前回の要求から再要求までの時間[s]。 |
+| `advice_cooldown_m` | double | `3.0` | 前回の要求地点からの移動距離[m]。時間かこの距離のどちらかで再要求できる。 |
+| `advice_budget_per_min` | int | `4` | 直近 60 秒の要求回数の上限。 |
+| `advice_budget_total` | int | `30` | 走行全体の要求回数の上限。 |
+| `max_obstacle_wait_sec` | double | `30.0` | 移動障害の通過待ちの上限[s]。 |
+| `layer_clearance_timeout_sec` | double | `2.0` | 実測空き幅を回避幅の上限に使う鮮度[s]。 |
 | `road_blocked_confirmation_sec` | double | `5.0` | `/road_blocked` の封鎖継続を確認する時間[s]。負の場合は 0.0 に補正。 |
 
 既定値のうち `start_immediately` と `avoid_back_offset_m` は、ノードが宣言する値と

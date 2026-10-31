@@ -19,12 +19,12 @@
         </inertia>
       </inertial>
       <collision name="collision">
-        <pose>-0.25 0 0.25 0 0 0</pose>
-        <geometry><box><size>0.6 0.4 0.5</size></box></geometry>
+        <pose>-0.25 0 0.15 0 0 0</pose>
+        <geometry><box><size>0.6 0.4 0.3</size></box></geometry>
       </collision>
       <visual name="visual">
-        <pose>-0.25 0 0.25 0 0 0</pose>
-        <geometry><box><size>0.6 0.4 0.5</size></box></geometry>
+        <pose>-0.25 0 0.15 0 0 0</pose>
+        <geometry><box><size>0.6 0.4 0.3</size></box></geometry>
         <material>
           <ambient>0.1 0.25 0.8 1</ambient>
           <diffuse>0.1 0.25 0.8 1</diffuse>
@@ -136,85 +136,30 @@
       <child>laser</child>
     </joint>
 
-    <link name="pillar_left">
-      <pose>0 0.15 0.8025 0 0 0</pose>
+    <!-- MID-360 支持台。実機は横梁上の前下がりマウントで、センサ光学原点は床上 0.562 m、
+         車軸中心の真上にある。車体上面から同じ高さまでの短い支持台とする。 -->
+    <link name="sensor_post">
+      <pose>0 0 0.506 0 0 0</pose>
       <inertial>
         <mass>1.0</mass>
         <inertia><ixx>0.005</ixx><iyy>0.005</iyy><izz>0.005</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
       </inertial>
       <collision name="collision">
-        <geometry><box><size>0.1 0.1 0.305</size></box></geometry>
+        <geometry><box><size>0.08 0.08 0.112</size></box></geometry>
       </collision>
       <visual name="visual">
-        <geometry><box><size>0.1 0.1 0.305</size></box></geometry>
+        <geometry><box><size>0.08 0.08 0.112</size></box></geometry>
         <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material>
       </visual>
     </link>
 
-    <joint name="pillar_left_joint" type="fixed">
+    <joint name="sensor_post_joint" type="fixed">
       <parent>base_link</parent>
-      <child>pillar_left</child>
-    </joint>
-
-    <link name="pillar_right">
-      <pose>0 -0.15 0.8025 0 0 0</pose>
-      <inertial>
-        <mass>1.0</mass>
-        <inertia><ixx>0.005</ixx><iyy>0.005</iyy><izz>0.005</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
-      </inertial>
-      <collision name="collision">
-        <geometry><box><size>0.1 0.1 0.305</size></box></geometry>
-      </collision>
-      <visual name="visual">
-        <geometry><box><size>0.1 0.1 0.305</size></box></geometry>
-        <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material>
-      </visual>
-    </link>
-
-    <joint name="pillar_right_joint" type="fixed">
-      <parent>base_link</parent>
-      <child>pillar_right</child>
-    </joint>
-
-    <link name="pillar_beam">
-      <pose>0 0 0.905 0 0 0</pose>
-      <inertial>
-        <mass>1.0</mass>
-        <inertia><ixx>0.005</ixx><iyy>0.005</iyy><izz>0.005</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
-      </inertial>
-      <collision name="collision">
-        <geometry><box><size>0.1 0.4 0.1</size></box></geometry>
-      </collision>
-      <visual name="visual">
-        <geometry><box><size>0.1 0.4 0.1</size></box></geometry>
-        <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material>
-      </visual>
-    </link>
-
-    <joint name="pillar_beam_joint" type="fixed">
-      <parent>base_link</parent>
-      <child>pillar_beam</child>
-    </joint>
-
-    <link name="mid360_dummy">
-      <pose>0 0 1.005 0 0 0</pose>
-      <inertial>
-        <mass>0.5</mass>
-        <inertia><ixx>0.005</ixx><iyy>0.005</iyy><izz>0.005</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
-      </inertial>
-      <visual name="visual">
-        <geometry><cylinder><radius>0.055</radius><length>0.1</length></cylinder></geometry>
-        <material><ambient>0.5 0.5 0.5 1</ambient><diffuse>0.5 0.5 0.5 1</diffuse></material>
-      </visual>
-    </link>
-
-    <joint name="mid360_dummy_joint" type="fixed">
-      <parent>base_link</parent>
-      <child>mid360_dummy</child>
+      <child>sensor_post</child>
     </joint>
 
     <link name="mid360_frame">
-      <pose>0 0 1.005 0 0 0</pose>
+      <pose>0 0 0.562 -0.010472 0.469494 0</pose>
       <inertial>
         <mass>1.0</mass>
         <inertia><ixx>0.01</ixx><iyy>0.01</iyy><izz>0.01</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
@@ -247,6 +192,36 @@
         <visualize>false</visualize>
       </sensor>
     </link>
+
+    <!-- フロントカメラ。実機は C920 を 640x480 / 5 fps で使う。取付位置は実機で未計測の
+         ため、支持台前面の床上 0.50 m、前方 0.115 m に置いた仮の値である。 -->
+    <link name="camera_link">
+      <pose>0.115 0 0.50 0 0 0</pose>
+      <inertial>
+        <mass>0.1</mass>
+        <inertia><ixx>0.0001</ixx><iyy>0.0001</iyy><izz>0.0001</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+      </inertial>
+      <visual name="visual">
+        <geometry><box><size>0.03 0.08 0.03</size></box></geometry>
+        <material><ambient>0.2 0.2 0.2 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
+      </visual>
+      <sensor name="front_camera" type="camera">
+        <topic>/usb_cam/image_raw</topic>
+        <update_rate>5</update_rate>
+        <camera>
+          <horizontal_fov>1.2217</horizontal_fov>
+          <image><width>640</width><height>480</height><format>R8G8B8</format></image>
+          <clip><near>0.1</near><far>50.0</far></clip>
+        </camera>
+        <always_on>true</always_on>
+        <visualize>false</visualize>
+      </sensor>
+    </link>
+
+    <joint name="camera_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>camera_link</child>
+    </joint>
 
     <joint name="mid360_joint" type="fixed">
       <parent>base_link</parent>

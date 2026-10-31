@@ -6,3 +6,14 @@ route_follower:
     start_immediately: false
     target_frame: "map"
     avoid_back_offset_m: 0.75
+
+    # AI 助言。false の間は従来どおりの回避だけで走る。
+    use_ai_advice: false
+    advice_trigger_hold_sec: 3.0
+    advice_wait_limit_sec: 3.0
+    advice_cooldown_sec: 20.0
+    advice_cooldown_m: 3.0
+    advice_budget_per_min: 4
+    advice_budget_total: 30
+    max_obstacle_wait_sec: 30.0
+    layer_clearance_timeout_sec: 2.0
