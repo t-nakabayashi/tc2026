@@ -272,6 +272,7 @@ ros2 run icart_bringup run_digital_twin --output log/digital_twin/session01 --st
 - [共通起動](src/icart_bringup/README.md): 実機・模擬環境の選択とセッション準備
 - [経路採取・編集](src/route_survey/README.md): 手動走行から LLH 経路を保存
 - [シミュレーション](src/obstacle_route_sim/README.md): 地形・センサ生成と評価
+- [本走行コース](src/route_planner/routes/tsukuba2026/README.md): 回避幅付きの全域固定経路（実機走行は未確認）
 - [検証用経路](src/route_planner/routes/tsukuba2026_digital_twin/README.md): 未測量の試験データ
 
 全体テストは `python3 scripts/run_pytest.py -v` で実行する。対象は `pytest.ini` の

@@ -1,0 +1,18 @@
+# つくば2026 本走行コース（選択課題A対応）。
+# 固定ブロックは課題A非対応のルートと同じ2ファイルを参照する。CSVは複製しない。
+# 可変ブロックは src/route_survey/tools/build_task_a_route.py が生成する。
+blocks:
+- name: tsukuba2026_part1
+  type: fixed
+  segment_id: fixed/part1.csv
+- name: task_a
+  type: variable
+  nodes_file: variable/nodes.csv
+  edges_file: variable/edges.csv
+  start: G
+  goal: G
+  checkpoints:
+  - O11
+- name: tsukuba2026_part2
+  type: fixed
+  segment_id: fixed/part2.csv

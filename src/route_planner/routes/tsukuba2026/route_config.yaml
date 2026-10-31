@@ -1,0 +1,11 @@
+# つくば2026 本走行コース（選択課題A非対応）。
+# 経路は fixed/part1.csv と fixed/part2.csv に分かれている。分割点は WP0738 で、
+# 選択課題Aのゲートへ入る位置である。課題A対応のルートは、同じ2ファイルの間に
+# 可変ブロックを挟む別の route_config として定義する。CSVは複製しない。
+blocks:
+- name: tsukuba2026_part1
+  type: fixed
+  segment_id: fixed/part1.csv
+- name: tsukuba2026_part2
+  type: fixed
+  segment_id: fixed/part2.csv

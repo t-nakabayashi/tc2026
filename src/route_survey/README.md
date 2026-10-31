@@ -45,6 +45,13 @@ docs/waypointの回避幅を求める手順.mdを参照する。断面測定、U
 区間はコースが変わらない限り不変で、ログが変わったときは区間の開始・終了の距離値
 だけを合わせる。区間の説明は現地の写真を含むため、HTMLも配布用PDFもリポジトリで管理しない。
 
+回避幅を書き込んだ経路を`route_planner`の本走行ルートとして登録し、選択課題Aの通路網を
+可変ブロックとして加える手順は
+docs/本走行ルートの登録と選択課題Aの通路網を作る手順.mdを参照する。経路CSVの分割
+（`tools/split_route_csv.py`）、通路網の定義（`params/tsukuba2026_task_a_graph.yaml`）、
+可変ブロックの生成（`tools/build_task_a_route.py`）までを扱う。課題A対応と非対応の
+2つのルートは、同じ経路CSVを複製せずに定義する。
+
 詳細・検証範囲はdocs/route_survey_詳細設計書.mdを参照する。
 
 本番として確認した経路の配置先は`src/route_planner/routes/<コース名>/`とする。

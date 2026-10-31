@@ -1,0 +1,7 @@
+route_planner:
+  ros__parameters:
+    projection_config_path: params/default.yaml
+    config_yaml_path: routes/tsukuba2026/route_config.yaml
+    csv_base_dir: routes/tsukuba2026
+    map_image_path: ''
+    map_worldfile_path: ''

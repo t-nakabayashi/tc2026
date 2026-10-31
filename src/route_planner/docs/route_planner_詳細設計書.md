@@ -67,8 +67,9 @@ LLH と ENU の変換式および投影原点は
 `routes/` 以下の CSV・PNG・PGW は管理対象である。`*_mapped.png` は
 `plot_edges_on_map.py` が生成する確認用の重畳図で、同じく管理対象として置く。
 
-環境は `tsukuba`、`tsukuba2026_digital_twin`、`inagi`、`simulation`、
-`obstacle_route_sim/<形状>_w<幅>` を持つ。`obstacle_route_sim` 配下は障害物回避の
+環境は `tsukuba2026`、`tsukuba2026_digital_twin`、`inagi`、`simulation`、
+`obstacle_route_sim/<形状>_w<幅>` を持つ。`tsukuba2026` は本走行コースで、全域を
+固定ブロック 1 つとして走る。`obstacle_route_sim` 配下は障害物回避の
 シミュレーション用で、直線・クランク・S 字の 3 形状と通行幅 2 / 3 / 5 m の組み合わせである。
 
 ## 3. 外部インタフェース仕様
