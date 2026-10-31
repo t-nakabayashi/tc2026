@@ -265,7 +265,7 @@ class HeadlessRouteStackEvaluator:
         )
 
     def _resolve_param_path(self, profile_id: str, requested: str) -> str:
-        """`tsukuba.yaml` のようなファイル名指定を、profile の既定パラメータと同じ
+        """`inagi.yaml` のようなファイル名指定を、profile の既定パラメータと同じ
         ディレクトリ配下のパスへ解決する。既にパス区切りを含む場合はそのまま使う
         （`qt_route_stack_eval.py` と同じ扱い）。"""
 
@@ -403,12 +403,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--goal-label", default="30", help="route_manager の終了ラベル")
     parser.add_argument(
         "--route-planner-param",
-        default="tsukuba.yaml",
+        default="inagi.yaml",
         help="route_planner のパラメータ表示名または YAML パス",
     )
     parser.add_argument(
         "--route-manager-param",
-        default="tsukuba.yaml",
+        default="inagi.yaml",
         help="route_manager のパラメータ表示名または YAML パス",
     )
     parser.add_argument(

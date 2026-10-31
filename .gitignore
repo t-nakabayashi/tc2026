@@ -29,3 +29,7 @@ node_modules/
 
 # Local sensor captures, ROS bags, and diagnostic outputs
 /artifacts/
+
+# 現地写真を含む区間の説明。リポジトリ外へ出力するが、取り違え防止として明示する
+region_guide.html
+region_guide.pdf

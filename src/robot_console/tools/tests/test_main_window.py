@@ -286,9 +286,9 @@ def test_launch_settings_tab_param_changed_signal_calls_core_update_selected_par
     core = _FakeConsoleCore()
     window = MainWindow(core=core)
 
-    window.launch_settings_tab.param_changed.emit('route_planner', 'params/tsukuba.yaml')
+    window.launch_settings_tab.param_changed.emit('route_planner', 'params/inagi.yaml')
 
-    assert core.selected_param_calls == [('route_planner', 'params/tsukuba.yaml')]
+    assert core.selected_param_calls == [('route_planner', 'params/inagi.yaml')]
 
 
 def test_launch_settings_tab_param_changed_signal_converts_empty_text_to_none(qt_app):

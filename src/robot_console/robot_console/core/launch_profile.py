@@ -357,7 +357,7 @@ def resolve_param_path(profile: LaunchProfile, param_path: Optional[str]) -> Opt
     """`param_path` をパッケージ共有ディレクトリ基準の絶対パスへ解決する。
 
     `LaunchProfile.default_param` / `LaunchProfileState.selected_param` は
-    `'params/tsukuba.yaml'` のようなパッケージ相対のフラグメントで保持される。
+    `'params/inagi.yaml'` のようなパッケージ相対のフラグメントで保持される。
     `ros2 launch` の各launchファイルはこの文字列をそのまま
     `Node(parameters=[...])` や独自の `open()` へ渡すため、相対パスのままでは
     サブプロセスの作業ディレクトリ次第で解決に失敗する。実際に起動する直前に

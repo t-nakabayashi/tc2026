@@ -13,7 +13,7 @@ service を提供する。単体確認では、launch 後に `GetRoute` service 
 ```bash
 source install/setup.bash
 timeout 30s ros2 launch route_planner route_planner.launch.py \
-  param_file:="$(ros2 pkg prefix route_planner)/share/route_planner/params/tsukuba.yaml"
+  param_file:="$(ros2 pkg prefix route_planner)/share/route_planner/params/inagi.yaml"
 ```
 
 別プロセスで以下を実行する。
@@ -33,7 +33,7 @@ ros2 service call /get_route tc_route_msgs/srv/GetRoute \
 ```bash
 source install/setup.bash
 ros2 launch route_planner route_planner.launch.py \
-  param_file:="$(ros2 pkg prefix route_planner)/share/route_planner/params/tsukuba.yaml"
+  param_file:="$(ros2 pkg prefix route_planner)/share/route_planner/params/inagi.yaml"
 ```
 
 別プロセスで以下を起動する。
@@ -41,7 +41,7 @@ ros2 launch route_planner route_planner.launch.py \
 ```bash
 source install/setup.bash
 ros2 launch route_manager route_manager.launch.py \
-  param_file:="$(ros2 pkg prefix route_manager)/share/route_manager/params/tsukuba.yaml" \
+  param_file:="$(ros2 pkg prefix route_manager)/share/route_manager/params/inagi.yaml" \
   start_label:=10 \
   goal_label:=50
 ```

@@ -300,9 +300,9 @@ def test_resolve_param_path_joins_relative_path_with_package_share_directory():
         default_param='params/default.yaml',
     )
 
-    resolved = resolve_param_path(profile, 'params/tsukuba.yaml')
+    resolved = resolve_param_path(profile, 'params/inagi.yaml')
 
-    expected = str(Path(get_package_share_directory('route_planner')) / 'params/tsukuba.yaml')
+    expected = str(Path(get_package_share_directory('route_planner')) / 'params/inagi.yaml')
     assert resolved == expected
 
 

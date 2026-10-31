@@ -178,7 +178,7 @@ def test_request_launch_uses_state_updated_by_launch_settings_setters():
     calls: list = []
     core.launch_manager.launch = lambda profile, **kwargs: calls.append((profile, kwargs))
 
-    core.update_selected_param(profile_id, 'params/tsukuba.yaml')
+    core.update_selected_param(profile_id, 'params/inagi.yaml')
     core.update_use_alternate_launch(profile_id, True)
     core.update_simulator_enabled(profile_id, True)
 
@@ -187,7 +187,7 @@ def test_request_launch_uses_state_updated_by_launch_settings_setters():
     assert len(calls) == 1
     profile, kwargs = calls[0]
     assert profile.profile_id == profile_id
-    assert kwargs['param_path'] == 'params/tsukuba.yaml'
+    assert kwargs['param_path'] == 'params/inagi.yaml'
     assert kwargs['use_alternate'] is True
     assert kwargs['simulator_enabled'] is True
 

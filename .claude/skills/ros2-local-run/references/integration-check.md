@@ -46,8 +46,8 @@ label で確認するかは、対象の変更内容を踏まえてユーザー�
 
 | 項目 | 値 |
 | --- | --- |
-| `route_planner` parameter | `tsukuba.yaml` |
-| `route_manager` parameter | `tsukuba.yaml` |
+| `route_planner` parameter | `inagi.yaml` |
+| `route_manager` parameter | `inagi.yaml` |
 | `route_manager` Start Label | `10` |
 | `route_manager` Goal Label | `30` |
 | `route_follower` parameter | `default.yaml` |
