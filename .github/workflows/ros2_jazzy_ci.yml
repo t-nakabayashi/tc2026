@@ -39,6 +39,11 @@ jobs:
       - name: Run pytest
         shell: bash
         run: |
-          source /opt/ros/jazzy/setup.bash
-          source install/setup.bash
-          python3 scripts/run_pytest.py -v
+          sudo unshare --net bash -c '
+            ip link set lo up
+            exec sudo -u "$SUDO_USER" bash -c "
+              source /opt/ros/jazzy/setup.bash
+              source install/setup.bash
+              python3 scripts/run_pytest.py -v
+            "
+          '

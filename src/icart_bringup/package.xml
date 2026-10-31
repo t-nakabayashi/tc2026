@@ -19,6 +19,8 @@
   <exec_depend>urg_node</exec_depend><exec_depend>usb_cam</exec_depend>
   <exec_depend>livox_ros_driver2</exec_depend><exec_depend>rtk_gps_um982</exec_depend>
   <exec_depend>ypspur_ros2</exec_depend><exec_depend>tf2_ros</exec_depend>
+  <exec_depend>avoidance_advisor</exec_depend>
+  <exec_depend>lidar_layer_slicer</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <test_depend>python3-pytest</test_depend>
   <export><build_type>ament_python</build_type></export>

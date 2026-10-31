@@ -22,7 +22,7 @@ def test_directory_prefers_argument_then_environment(monkeypatch, tmp_path: Path
     assert bag_record.resolve_directory() == tmp_path / 'env'
 
     monkeypatch.delenv(bag_record.DIRECTORY_ENVIRONMENT)
-    assert bag_record.resolve_directory() == Path(bag_record.DEFAULT_DIRECTORY).expanduser()
+    assert bag_record.resolve_directory() == Path(bag_record.DEFAULT_DIRECTORY).expanduser().resolve()
 
 
 def test_output_name_matches_the_console_naming() -> None:

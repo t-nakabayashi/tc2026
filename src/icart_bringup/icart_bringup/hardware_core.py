@@ -97,9 +97,10 @@ def prepare_real(share: Path, planner_share: Path, fastlio_share: Path, livox_sh
         raise ValueError('GNSS/URG/車輪のシリアルポートが重複')
     catalog = read_yaml(share/'params/rtk_stations.yaml')
     station, ntrip = station_config(catalog, site, station, custom)
-    route_dir = (route_directory or planner_share/'routes'/site).resolve()
+    route_site = 'tsukuba2026' if site == 'tsukuba' else site
+    route_dir = (route_directory or planner_share/'routes'/route_site).resolve()
     route_name = 'route_config.yaml' if route_directory else (
-        'route_config_fixed.yaml' if site == 'inagi' else 'route_config_all_fixed.yaml')
+        'route_config_fixed.yaml' if site == 'inagi' else 'route_config.yaml')
     route_config = read_yaml(route_dir/route_name)
     first_file = route_config['blocks'][0]['segment_id']
     import csv

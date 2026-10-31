@@ -33,6 +33,10 @@ def test_generated_session_loads_route_and_matching_mount(tmp_path, site):
     builder = RouteBuilder(session['route_config'], session['csv_base_dir'], projection=projection)
     builder.load()
     assert len(builder.build_route(session['start_label'], session['goal_label'], []).waypoints) >= 2
+    if site == 'tsukuba':
+        route = builder.build_route(session['start_label'], session['goal_label'], [])
+        assert len(route.waypoints) == 3704
+        assert len(builder.blocks) == 2
     assert session['route_review_required']
     fusion = read_yaml(out/'fusion.yaml')['gnss_lio_fusion']['ros__parameters']
     survey = read_yaml(out/'recorder.yaml')['route_survey']['ros__parameters']

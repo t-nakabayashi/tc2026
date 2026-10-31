@@ -185,7 +185,7 @@ _THIS_DIR = Path(__file__).resolve().parent
 # 同じインタプリタで他のQtテストと混ぜるとセグメンテーションフォルトを起こす。
 # test_isolated_suite.py が TC2026_RUN_ISOLATED を設定して subprocess で実行する。
 # 本 conftest は isolated/ を直接指定した場合にも読み込まれるため、環境変数で分岐する。
-collect_ignore_glob = [] if os.environ.get('TC2026_RUN_ISOLATED') else ['isolated/*']
+collect_ignore = [] if os.environ.get('TC2026_RUN_ISOLATED') else ['isolated']
 
 
 def pytest_collection_modifyitems(items: list) -> None:
